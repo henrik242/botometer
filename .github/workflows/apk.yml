@@ -13,14 +13,14 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: '17'
 
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v6
 
       - name: Test satstabellen
         run: ./gradlew :app:test
@@ -44,7 +44,9 @@ jobs:
           fi
           ./gradlew :app:assembleRelease $ARGS
 
-      - uses: actions/upload-artifact@v4
+      # archive: false laster opp APK-en som den er i stedet for pakket i en zip, så den kan
+      # lastes rett ned på telefonen. Krever nøyaktig én fil, derfor full sti og ikke wildcard.
+      - uses: actions/upload-artifact@v7
         with:
-          name: botometer-apk
-          path: app/build/outputs/apk/release/*.apk
+          path: app/build/outputs/apk/release/app-release.apk
+          archive: false
