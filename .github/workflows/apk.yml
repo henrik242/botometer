@@ -56,16 +56,17 @@ jobs:
           ./gradlew :app:assembleRelease :app:bundleRelease "${ARGS[@]}"
 
       # archive: false laster opp filen som den er i stedet for pakket i en zip, så den kan
-      # lastes rett ned på telefonen. Krever nøyaktig én fil, derfor full sti og ikke wildcard.
-      # Uten name arver artefakten filnavnet, så de to havner ikke i samme navn.
+      # lastes rett ned på telefonen. Krever nøyaktig én fil: *.apk treffer bare APK-en, ikke
+      # output-metadata.json ved siden av. Filnavnet bærer kortshaen, og artefakten arver det,
+      # så nedlastingen sier selv hvilken commit den er.
       - uses: actions/upload-artifact@v7
         with:
-          path: app/build/outputs/apk/release/app-release.apk
+          path: app/build/outputs/apk/release/*.apk
           archive: false
 
       # AAB-en lastes ikke ned og installeres på telefonen - den lastes opp til Play. Den er med
       # fordi et internt testspor ikke tar imot APK.
       - uses: actions/upload-artifact@v7
         with:
-          path: app/build/outputs/bundle/release/app-release.aab
+          path: app/build/outputs/bundle/release/*.aab
           archive: false
