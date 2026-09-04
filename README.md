@@ -23,8 +23,17 @@ kategorier (navigation, parking, charging, POI, IoT, media, messaging). Det finn
 speedometer i. Appen deklarerer seg derfor som `androidx.car.app.category.NAVIGATION`, noe som
 ikke ville passert Play-review siden kategorien krever faktisk turn-by-turn-navigasjon.
 
-Sideloading er altså en forutsetning, ikke en nødløsning. Se «Hva sideloading faktisk endrer»
-nedenfor for hva det gir og hva det ikke gir.
+Men sideloading er ikke veien rundt det, slik denne README-en tidligere hevdet. Android Autos
+«Ukjente kilder» gjelder **ikke** apper bygget på Car App Library. Google sier det rett ut:
+
+> Android Auto has a developer option that lets you run apps that aren't installed from a trusted
+> source. This setting applies to media, messaging notifications, and parked apps but doesn't
+> apply to apps built using the Android for Cars App Library.
+
+En sidelastet templat-app dukker derfor **aldri** opp i en ekte bil, uansett hvor riktig
+manifestet er - og verten sier ikke fra. Den utelater bare oppføringen. Det kostet en runde med
+feilsøking i manifestet før noen leste testdokumentasjonen. Se «Hvordan appen faktisk kommer inn
+i bilen» nedenfor.
 
 **2. GPS-abonnementet eies av en foreground service.** Fra Android 10 får en app ikke posisjon når
 den ikke er i forgrunnen, og en `CarAppService` gir ikke forgrunnsstatus - appen ville fått fart de
@@ -50,20 +59,39 @@ tre rettskildene er endret. Gjeldende satser er fra **15. februar 2026** (FOR-20
 som endrer FOR-1990-06-29-492 § 1). Når satsene justeres — det skjer omtrent årlig — oppdaterer
 du JSON-filen, forventningene i `FineCalculatorTest` og `sistEndret` i `satser/kilder.json`.
 
-## Hva sideloading faktisk endrer
+## Hvordan appen faktisk kommer inn i bilen
 
-**Det som åpner seg:** NAVIGATION-kategorien uten turn-by-turn er greit. Ingen review, ingen
-Data Safety-erklæring, ingen tvungen targetSdk-jakt. `ACCESS_BACKGROUND_LOCATION` ville også vært
-mulig (Play krever begrunnelsesvideo), men foreground service er fortsatt riktigere design, så det
-er ikke brukt.
+Verten krever at appen er installert fra en *trusted source*. I praksis betyr det Play, og
+«Ukjente kilder» hjelper ikke for en templat-app. Det finnes likevel to veier inn som ikke
+innebærer publisering eller review:
 
-**Det som ikke endrer seg:** template-restriksjonene håndheves av *bilverten* i runtime, ikke av
-Play. Du får fortsatt bare tegne fritt inne i `NavigationTemplate`s surface. `CAR_SPEED` er også
-vertsgatet, ikke distribusjonsgatet. Ingenting av det som var teknisk blokkert løsner.
+**Internal App Sharing** (`play.google.com/console/internalappsharing`) er den enkleste. Du laster
+opp APK-en, får en lenke, åpner den på telefonen og installerer. Play står som installasjonskilde,
+og appen dukker opp i bilen. **Ingen review, ingen Data Safety-erklæring, ingen publisering** - og
+dermed heller ingen som vurderer om NAVIGATION-kategorien er berettiget. Det krever en
+Play Console-konto (engangsavgift), men ikke en utgivelse.
 
-**Den nye risikoen, og det viktigste designvalget i denne runden:** Play var oppdateringskanalen
-for bøtesatsene. En APK bygget i 2026 ville kjørt 2026-satser i 2029 i stillhet, og satsene
-justeres omtrent årlig. Derfor er satsene flyttet ut av APK-en:
+**Internt testspor** er alternativet om du vil ha flere enn deg selv på den, med opptil 100
+testere og oppdateringer som er ute i løpet av minutter.
+
+**Desktop Head Unit** virker fortsatt med en lokalt installert APK, og er derfor stedet å utvikle:
+
+```bash
+$ANDROID_HOME/extras/google/auto/desktop-head-unit
+```
+
+Kravet om trusted source gjelder ekte biler. Det er DHU som gjør utviklingsløkka mulig i det hele
+tatt - uten den måtte hver endring gjennom en opplasting.
+
+**Det som ikke endrer seg med noen av dem:** template-restriksjonene håndheves av *bilverten* i
+runtime, ikke av Play. Du får fortsatt bare tegne fritt inne i `NavigationTemplate`s surface.
+`CAR_SPEED` er også vertsgatet, ikke distribusjonsgatet. Og siden Internal App Sharing ikke er en
+utgivelse, gjelder det heller ikke noen tvungen targetSdk-jakt.
+
+**Oppdateringskanalen for satsene, som fortsatt er det viktigste designvalget:** Internal App
+Sharing er ingen oppdateringskanal - den varsler ikke, og den oppdaterer ikke noe av seg selv. En
+APK bygget i 2026 ville kjørt 2026-satser i 2029 i stillhet, og satsene justeres omtrent årlig.
+Derfor er satsene flyttet ut av APK-en:
 
 - `FineTableRepository` laster fra `satser/botesatser.json` i repoet, med APK-asseten som fallback
 - Nyeste `versjon` vinner, så en fersk installasjon overstyrer en gammel cache
@@ -184,49 +212,46 @@ Etter review-runden står følgende igjen som uløst. Det viktigste først:
 ```bash
 ./gradlew :app:test              # satstabellen verifiseres
 ./gradlew :app:assembleRelease   # → app/build/outputs/apk/release/
-adb install -r app/build/outputs/apk/release/app-release.apk
+adb install -r app/build/outputs/apk/release/app-release.apk   # nok for DHU, ikke for bil
 ```
 
 Bruk `assembleRelease`, ikke `installDebug`: debug-bygg har `ALLOW_ALL_CAR_HOSTS = true`.
 
 **Vil du ikke bygge selv:** `.github/workflows/apk.yml` bygger og tester på hver push, og
-legger APK-en ved kjøringen som artefakt. Uten distribusjonskanal er CI kanalen.
+legger APK-en ved kjøringen som artefakt.
 
-**Skru på sideloading i Android Auto:** Innstillinger → trykk «Versjon» ti ganger →
-utviklerinnstillinger → *Ukjente kilder*. Appen dukker opp i bilen, eller i Desktop Head Unit:
+**For DHU** holder det å installere APK-en rett på telefonen. **For en ekte bil må den inn via
+Play** - Internal App Sharing er nok, se «Hvordan appen faktisk kommer inn i bilen». En APK lagt
+inn med `adb install` eller en filbehandler vises ikke i bilen, og du får ingen feilmelding som
+sier hvorfor.
 
-```bash
-$ANDROID_HOME/extras/google/auto/desktop-head-unit
-```
-
-Bruk DHU under utvikling: samme launcher og samme avvisningslogg som i bilen, men sekunder pr.
-runde i stedet for en kjøretur. DHU gir ingen GPS-fart - bruk `adb emu geo fix` mot emulator, eller
-mock provider, for å teste matchingen uten å kjøre bil.
+DHU gir ingen GPS-fart - bruk `adb emu geo fix` mot emulator, eller mock provider, for å teste
+matchingen uten å kjøre bil.
 
 ### Dukker ikke appen opp i app-oversikten i bilen?
 
-`android:label` og `android:icon` **må** stå på `<service>`-deklarasjonen av `CarAppService`, ikke
-bare på `<application>`. Verten bruker attributtene på tjenesten til å representere appen i bilens
-system-UI, og arver dem ikke fra applikasjonen. Mangler de, har verten ingenting å tegne en
-oppføring med, og appen blir borte fra oversikten uten en eneste feilmelding. Det er den vanligste
-grunnen til «APK-en er installert, Ukjente kilder er på, men ingenting skjer».
+Åpne telefon-appen. Den øverste seksjonen kjører de samme spørringene mot PackageManager som
+verten selv gjør, og leser dem fra den **installerte** APK-en. Teksten er selectable, så den kan
+limes rett inn i en issue.
 
-Hjelper ikke det, så gjett videre - mål. `tools/bil-diagnostikk.sh` går gjennom lagene i
-rekkefølge og sier hva hvert svar betyr:
+Rekkefølgen på sjekkene er svarene sortert etter hvor ofte de er årsaken:
+
+1. **`✗ INSTALLERT UTENFOR PLAY`** - dette er nesten alltid det. «Ukjente kilder» gjelder ikke
+   Car App Library-apper, og ingenting i manifestet kan rette på det. Legg den inn via Internal
+   App Sharing.
+2. **`✗ MANGLER: android:label` / `android:icon`** - attributtene må stå på `<service>`-en, ikke
+   bare på `<application>`. Verten arver dem ikke, og uten dem har den ingenting å tegne en
+   oppføring med. `CarAppManifestTest` skal fange dette før det rekker ut i en APK.
+3. **`✗ CarAppService: IKKE synlig`** - manifestet eller R8. Linja under sier om klassen fortsatt
+   finnes i APK-en.
+4. **Alt `✓` og appen mangler likevel** - da er det verten, og bare vertsloggen sier hvorfor:
 
 ```bash
-./tools/bil-diagnostikk.sh
+./tools/bil-diagnostikk.sh    # samme sjekker med adb, og til slutt vertsloggen
 ```
 
-Den sjekker om appen er installert i det hele tatt, om det henger igjen en gammel `fartsbot`,
-hvilken `versionCode` som faktisk ligger på telefonen (er den lavere enn `git rev-list --count
-HEAD`, tester du en gammel APK og alt annet er målt på feil kode), om `CarAppService` overlevde
-R8, om PackageManager løser den opp, og til slutt tvangsstopper den Android Auto og åpner
-vertsloggen.
-
 Gearhead logger hvorfor den forkaster en app - feil kategori, for høy `minCarApiLevel`, feilet
-vertsvalidering. **Den loggen er svaret; den slår enhver hypotese.** Husk også at *Ukjente kilder*
-først slår inn etter at Android Auto er tvangsstoppet og koblet til på nytt.
+vertsvalidering. **Den loggen er svaret; den slår enhver hypotese i dette dokumentet.**
 
 ## Personvern
 

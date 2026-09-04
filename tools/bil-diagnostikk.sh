@@ -32,6 +32,21 @@ fi
 
 overskrift() { echo; echo "=== $* ==="; }
 
+overskrift "0. Hvor er appen installert fra? Dette avgjør alt annet."
+# «Ukjente kilder» i Android Auto gjelder media-, meldings- og parkerte apper, IKKE apper bygget
+# på Car App Library. Google sier det rett ut i testdokumentasjonen. En sidelastet templat-app
+# dukker derfor aldri opp i en ekte bil, uansett hvor riktig manifestet er - og verten sier ikke
+# fra. Den utelater bare oppføringen. Alt under dette steget er bortkastet om dette er svaret.
+KILDE=$(adb shell dumpsys package "$PAKKE" | grep -m1 installerPackageName | tr -d '\r')
+echo "${KILDE:-  (ingen installerPackageName - lagt inn med adb eller filbehandler)}"
+if echo "$KILDE" | grep -q com.android.vending; then
+    echo "==> Installert fra Play. Går videre."
+else
+    echo "==> IKKE installert fra Play. Dette er grunnen, og manifestet kan ikke rette på det."
+    echo "    Legg den inn via Play Internal App Sharing - ingen review, ingen publisering."
+    echo "    Desktop Head Unit virker fortsatt med en lokalt installert APK."
+fi
+
 overskrift "1. Er appen installert, og henger det igjen en gammel fartsbot?"
 # To apper som deklarerer samme CarAppService-action gir forvirrende oppførsel i launcheren.
 adb shell pm list packages | grep -iE 'botometer|fartsbot' || echo "INGEN TREFF - appen er ikke installert."
@@ -58,36 +73,15 @@ else
     echo "    Sjekk at <service> har action androidx.car.app.CarAppService og at den er exported."
 fi
 
-overskrift "5. Er Ukjente kilder skrudd på, og er Android Auto restartet etterpå?"
-# Innstillingen leses ved oppstart av Android Auto. Skrur du den på uten å tvangsstoppe, er den
-# ikke i effekt, og alt ser ut som om appen er avvist.
+overskrift "5. Hvilken Android Auto-versjon, og restart av verten"
+# NB: «Ukjente kilder» hjelper IKKE for denne appen - se steg 0. Innstillingen gjelder media-,
+# meldings- og parkerte apper. Vertsversjonen er likevel verdt å ha med, siden den avgjør hvilke
+# Car App API-nivåer som støttes, og en restart rydder bort en cachet app-liste.
 adb shell dumpsys package "$ANDROID_AUTO" | grep -E 'versionName' | head -1
 echo "Tvangsstopper Android Auto, så innstillingen leses på nytt ..."
 adb shell am force-stop "$ANDROID_AUTO"
 
-overskrift "6. A/B: oppfører debug-bygget seg annerledes?"
-# Debug-bygget skiller seg fra release på nøyaktig to ting: ingen R8, og ALLOW_ALL_CAR_HOSTS.
-# Dukker debug opp mens release ikke gjør det, er det ett av de to - og da vet vi hvor vi skal
-# lete i stedet for å gjette. Dukker ingen av dem opp, ligger årsaken hos verten, og steg 7 har
-# svaret.
-#
-# Dette er en MÅLING, ikke en løsning. Debug-bygget skal ikke bli stående på telefonen: med
-# ALLOW_ALL_CAR_HOSTS kan en vilkårlig app binde seg til CarAppService og lese posisjonen din.
-# Avinstaller det når du er ferdig, og la release beholde vertsvalideringen.
-cat <<'TIPS'
-Kjør, i denne rekkefølgen:
-
-    adb uninstall no.synth.botometer
-    ./gradlew :app:installDebug
-    # koble til, se etter appen i oversikten
-    adb uninstall no.synth.botometer      # IKKE la debug-bygget bli stående
-
-Dukket appen opp med debug, men ikke med release?  -> R8 eller vertsvalidering.
-                                                      Steg 3 og 4 over skiller dem.
-Dukket den ikke opp med noen av dem?               -> verten avviser appen. Steg 7.
-TIPS
-
-overskrift "7. Vertsloggen. DETTE ER SVARET."
+overskrift "6. Vertsloggen. SVARET, hvis steg 0 til 5 var i orden."
 echo "Loggen tømmes nå. Koble til bilen eller start Desktop Head Unit, og vent til"
 echo "app-oversikten vises. Avslutt med Ctrl-C."
 echo
