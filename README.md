@@ -211,16 +211,18 @@ system-UI, og arver dem ikke fra applikasjonen. Mangler de, har verten ingenting
 oppføring med, og appen blir borte fra oversikten uten en eneste feilmelding. Det er den vanligste
 grunnen til «APK-en er installert, Ukjente kilder er på, men ingenting skjer».
 
-Sjekk fakta før du gjetter videre:
+Hjelper ikke det, så gjett videre - mål. `tools/bil-diagnostikk.sh` går gjennom lagene i
+rekkefølge og sier hva hvert svar betyr:
 
 ```bash
-# Er tjenesten i det hele tatt installert, og overlevde den R8?
-adb shell pm query-services -a androidx.car.app.CarAppService
-adb shell dumpsys package no.synth.botometer | grep -i -A6 carappservice
-
-# Hvorfor verten dropper appen. Tøm loggen, koble til på nytt, les.
-adb logcat -c && adb logcat | grep -iE 'GH\.|Gearhead|CarApp'
+./tools/bil-diagnostikk.sh
 ```
+
+Den sjekker om appen er installert i det hele tatt, om det henger igjen en gammel `fartsbot`,
+hvilken `versionCode` som faktisk ligger på telefonen (er den lavere enn `git rev-list --count
+HEAD`, tester du en gammel APK og alt annet er målt på feil kode), om `CarAppService` overlevde
+R8, om PackageManager løser den opp, og til slutt tvangsstopper den Android Auto og åpner
+vertsloggen.
 
 Gearhead logger hvorfor den forkaster en app - feil kategori, for høy `minCarApiLevel`, feilet
 vertsvalidering. **Den loggen er svaret; den slår enhver hypotese.** Husk også at *Ukjente kilder*
