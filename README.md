@@ -66,13 +66,21 @@ Verten krever at appen er installert fra en *trusted source*. I praksis betyr de
 innebærer publisering eller review:
 
 **Internal App Sharing** (`play.google.com/console/internalappsharing`) er den enkleste. Du laster
-opp APK-en, får en lenke, åpner den på telefonen og installerer. Play står som installasjonskilde,
+opp appen, får en lenke, åpner den på telefonen og installerer. Play står som installasjonskilde,
 og appen dukker opp i bilen. **Ingen review, ingen Data Safety-erklæring, ingen publisering** - og
 dermed heller ingen som vurderer om NAVIGATION-kategorien er berettiget. Det krever en
 Play Console-konto (engangsavgift), men ikke en utgivelse.
 
+Den tar imot **både APK og AAB** - hjelpesiden heter «Share app bundles and APKs internally». Blir
+du bedt om en AAB, står du sannsynligvis på opplastingssiden til et utgivelsesspor og ikke på
+Internal App Sharing. Signeringsnøkkelen spiller heller ingen rolle her: Play signerer opplastingen
+om med sitt eget testsertifikat, så APK-en fra CI duger som den er, debug-nøkkel og alt.
+
 **Internt testspor** er alternativet om du vil ha flere enn deg selv på den, med opptil 100
-testere og oppdateringer som er ute i løpet av minutter.
+testere og oppdateringer som er ute i løpet av minutter. Det sporet krever **AAB** - og en *fast*
+keystore: CI signerer med en ny tilfeldig debug-nøkkel for hver kjøring når secretsene mangler, og
+Play avviser andre opplasting fordi nøkkelen har byttet seg. Legg inn `BOTOMETER_KEYSTORE_BASE64`
+m.m. som secrets før du går den veien.
 
 **Desktop Head Unit** virker fortsatt med en lokalt installert APK, og er derfor stedet å utvikle:
 
@@ -212,6 +220,7 @@ Etter review-runden står følgende igjen som uløst. Det viktigste først:
 ```bash
 ./gradlew :app:test              # satstabellen verifiseres
 ./gradlew :app:assembleRelease   # → app/build/outputs/apk/release/
+./gradlew :app:bundleRelease     # → app/build/outputs/bundle/release/  (AAB, til Play)
 adb install -r app/build/outputs/apk/release/app-release.apk   # nok for DHU, ikke for bil
 ```
 
