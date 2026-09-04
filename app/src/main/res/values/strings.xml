@@ -6,7 +6,7 @@
     <string name="notification_text">Leser posisjon for å vise fartsgrense og bøtenivå.</string>
     <!-- Statens vegvesen krever at API-klienter identifiserer seg. Bytt til noe som
          identifiserer din installasjon. Unngå personnavn: verdien havner i Vegvesenets logger. -->
-    <string name="nvdb_client_id" translatable="false">botometer-android/0.1</string>
+    <string name="nvdb_client_id" translatable="false">botometer-android</string>
     <string name="refresh_rates">Oppdater satser</string>
     <string name="grant_permissions">Gi tilganger</string>
     <!-- Oppdateringskanal for bøtesatsene. Uten Play må satsene kunne hentes uavhengig av

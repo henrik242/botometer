@@ -103,7 +103,7 @@ GET https://nvdbapiles.atlas.vegvesen.no/vegobjekter/api/v4/vegobjekter/105
   &inkluder=egenskaper,geometri,lokasjon
   &segmentering=true
   &sortering=false&inkluderAntall=false
-X-Client: botometer-android/0.1
+X-Client: botometer-android
 ```
 
 Åpent, ingen nøkkel, men `X-Client` er påkrevd av Vegvesenet — uten den risikerer du struping.
@@ -205,8 +205,8 @@ matchingen uten å kjøre bil.
 ## Personvern
 
 Posisjonen forlater aldri telefonen: NVDB-kallet sender en bbox på ~2 km, ikke et punkt. Det er en
-reell designstyrke og bør ikke ofres for finere matching. `X-Client` er satt til `botometer-android/0.1`
-uten personnavn, siden verdien havner i Vegvesenets logger.
+reell designstyrke og bør ikke ofres for finere matching. `X-Client` er satt til `botometer-android`
+uten versjon og personnavn, siden verdien havner i Vegvesenets logger.
 
 Foreground-servicen viser et vedvarende varsel så lenge posisjon leses. Det er derfor
 `POST_NOTIFICATIONS` etterspørres på API 33+ - servicen kjører uansett, men et skjult varsel er

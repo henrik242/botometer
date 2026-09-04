@@ -17,6 +17,24 @@ plugins {
  */
 val keystorePath = (findProperty("botometer.keystore") as String?)?.takeIf { file(it).exists() }
 
+/**
+ * Versjonen kommer fra git. Uten Play Console er en APK i naturen bare en fil, og da må den selv
+ * kunne fortelle nøyaktig hvilken kildekode den er bygget fra: antall commits vokser monotont og
+ * duger som versionCode, mens navnet tar med kortsha og datoen commiten ble laget.
+ *
+ * Commit-datoen, ikke byggetidspunktet: to bygg av samme commit skal gi samme versjon.
+ *
+ * Faller tilbake til 1 / "ukjent" utenfor et git-tre, f.eks. i et kildearkiv.
+ */
+fun git(vararg args: String): String? = runCatching {
+    providers.exec { commandLine("git", *args) }
+        .standardOutput.asText.get().trim().ifEmpty { null }
+}.getOrNull()
+
+val commitCount = git("rev-list", "--count", "HEAD")?.toIntOrNull() ?: 1
+val commitSha = git("rev-parse", "--short", "HEAD") ?: "ukjent"
+val commitDate = git("log", "-1", "--format=%cs") ?: "ukjent"
+
 android {
     namespace = "no.synth.botometer"
     compileSdk = 35
@@ -27,8 +45,8 @@ android {
         // Ingen Play-review betyr ingen tvungen targetSdk-jakt. Vi holder den likevel oppdatert:
         // oppførselen til foreground services henger på den, og å ligge igjen gir subtile feil.
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1"
+        versionCode = commitCount
+        versionName = "$commitCount ($commitSha, $commitDate)"
     }
 
     buildFeatures { buildConfig = true }
