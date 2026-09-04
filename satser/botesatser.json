@@ -1,7 +1,7 @@
 {
   "versjon": "2026-02-15",
   "hjemmel": "Forskrift om forenklet forelegg i vegtrafikksaker (FOR-1990-06-29-492) § 1, endret ved FOR-2026-02-06-147. Prikker: prikkforskriften. Tap av førerrett: tapsforskriften.",
-  "kilde": "Manuelt vedlikeholdt mot Lovdata. Lovdata har ingen åpen API for forskriftstekst - se README.",
+  "kilde": "Manuelt vedlikeholdt mot Lovdata (NLOD 2.0). Endringer i rettskildene varsles av tools/sjekk-satser.py - se README.",
   "toleranse": {
     "fradragKmt": 3,
     "fradragProsentOverKmt": 100,

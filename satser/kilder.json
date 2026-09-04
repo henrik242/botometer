@@ -1,0 +1,24 @@
+{
+  "_om": "Rettskildene botesatser.json er utledet av. tools/sjekk-satser.py sammenlikner sistEndret mot Lovdatas åpne datasett og sier fra når en av dem er endret. Filen leses aldri av appen.",
+  "kilder": [
+    {
+      "dokument": "sf-19900629-0492",
+      "tittel": "Forskrift om forenklet forelegg i vegtrafikksaker",
+      "gir": "botebeløpene, og versjonsdatoen i botesatser.json",
+      "styrerVersjon": true,
+      "sistEndret": "2026-02-15"
+    },
+    {
+      "dokument": "sf-20030919-1164",
+      "tittel": "Forskrift om prikkbelastning",
+      "gir": "antall prikker per trinn",
+      "sistEndret": "2021-01-01"
+    },
+    {
+      "dokument": "sf-20031219-1660",
+      "tittel": "Forskrift om tap av retten til å føre motorvogn mv.",
+      "gir": "beslag og tap av førerrett per trinn",
+      "sistEndret": "2024-09-01"
+    }
+  ]
+}
