@@ -22,6 +22,7 @@ import android.os.Build
  */
 object CarSetupDiagnostics {
 
+    private const val PLAY = "com.android.vending"
     private const val CAR_APP_SERVICE = "androidx.car.app.CarAppService"
     private const val KATEGORI_NAVIGASJON = "androidx.car.app.category.NAVIGATION"
     private const val ANDROID_AUTO = "com.google.android.projection.gearhead"
@@ -30,6 +31,26 @@ object CarSetupDiagnostics {
     @Suppress("DEPRECATION")   // getApplicationInfo(int) og Bundle.get() er utdatert fra API 33
     fun summary(context: Context): String = buildString {
         val pm = context.packageManager
+
+        // 0. Installasjonskilden avgjør alt annet, så den står først.
+        //
+        //    «Ukjente kilder» i Android Auto gjelder media-, meldings- og parkerte apper, IKKE
+        //    apper bygget på Car App Library. Google sier det rett ut: innstillingen «doesn't
+        //    apply to apps built using the Android for Cars App Library». En sidelastet
+        //    templat-app dukker derfor aldri opp i en ekte bil, uansett hvor riktig manifestet
+        //    er - og verten sier ikke fra. Den utelater bare oppføringen.
+        val installkilde = installertFra(pm, context.packageName)
+        if (installkilde != PLAY) {
+            appendLine("✗ INSTALLERT UTENFOR PLAY (${installkilde ?: "ukjent kilde"})")
+            appendLine("  Dette er grunnen, og det er ikke noe manifestet kan rette på.")
+            appendLine("  «Ukjente kilder» gjelder ikke apper bygget på Car App Library.")
+            appendLine("  Bruk Play Internal App Sharing - ingen review, ingen publisering.")
+            appendLine("  Desktop Head Unit virker fortsatt med lokalt installert app.")
+            appendLine()
+        } else {
+            appendLine("✓ Installert fra Play")
+        }
+
         val egne = query(pm, Intent(CAR_APP_SERVICE))
             .filter { it.serviceInfo.packageName == context.packageName }
 
@@ -79,11 +100,14 @@ object CarSetupDiagnostics {
 
         if (info.icon != 0 && info.labelRes != 0 && medKategori) {
             appendLine()
-            appendLine("Alt telefonen kan se er i orden. Vises appen likevel ikke i bilen, er det")
-            appendLine("verten som forkaster den, og bare vertsloggen sier hvorfor:")
-            appendLine("  adb logcat | grep -iE 'GH\\.|Gearhead|CarApp'")
-            appendLine("Husk at Ukjente kilder først slår inn etter at Android Auto er")
-            appendLine("tvangsstoppet - innstillingen leses ved oppstart.")
+            if (installkilde != PLAY) {
+                appendLine("Manifestet er i orden. Det som gjenstår er installasjonskilden over -")
+                appendLine("den, og ingenting annet, er grunnen til at appen mangler i bilen.")
+            } else {
+                appendLine("Alt telefonen kan se er i orden. Vises appen likevel ikke i bilen, er")
+                appendLine("det verten som forkaster den, og bare vertsloggen sier hvorfor:")
+                appendLine("  adb logcat | grep -iE 'GH\\.|Gearhead|CarApp'")
+            }
         }
     }
 
@@ -91,6 +115,19 @@ object CarSetupDiagnostics {
 
     /** R8 feiler ikke bygget når den stripper en komponent - appen blir bare stille borte. */
     private fun klassenFinnes() = runCatching { Class.forName(TJENESTE) }.isSuccess
+
+    /**
+     * Play setter seg selv som installer. En APK lagt inn med adb eller en filbehandler har
+     * ingen, eller navnet på filbehandleren - og er dermed ikke en «trusted source» for verten.
+     */
+    @Suppress("DEPRECATION")
+    private fun installertFra(pm: PackageManager, pakke: String): String? = runCatching {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            pm.getInstallSourceInfo(pakke).installingPackageName
+        } else {
+            pm.getInstallerPackageName(pakke)
+        }
+    }.getOrNull()
 
     @Suppress("DEPRECATION")
     private fun versjonAv(pm: PackageManager, pakke: String): String? =
