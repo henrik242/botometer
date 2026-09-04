@@ -37,15 +37,19 @@ jobs:
           BOTOMETER_KEY_ALIAS: ${{ secrets.BOTOMETER_KEY_ALIAS }}
           BOTOMETER_KEY_PASSWORD: ${{ secrets.BOTOMETER_KEY_PASSWORD }}
         run: |
-          ARGS=""
+          # Array, ikke streng: et passord med mellomrom eller glob-tegn ville blitt delt opp
+          # av ordsplittingen og gitt et signeringsbrudd som ser ut som feil passord.
+          ARGS=()
           if [ -n "$BOTOMETER_KEYSTORE_BASE64" ]; then
             echo "$BOTOMETER_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/botometer.jks"
-            ARGS="-Pbotometer.keystore=$RUNNER_TEMP/botometer.jks \
-                  -Pbotometer.keystorePassword=$BOTOMETER_KEYSTORE_PASSWORD \
-                  -Pbotometer.keyAlias=$BOTOMETER_KEY_ALIAS \
-                  -Pbotometer.keyPassword=$BOTOMETER_KEY_PASSWORD"
+            ARGS=(-Pbotometer.keystore="$RUNNER_TEMP/botometer.jks"
+                  -Pbotometer.keystorePassword="$BOTOMETER_KEYSTORE_PASSWORD"
+                  -Pbotometer.keyAlias="$BOTOMETER_KEY_ALIAS"
+                  -Pbotometer.keyPassword="$BOTOMETER_KEY_PASSWORD")
+          else
+            echo "::warning::Ingen keystore-secrets. APK-en signeres med en tilfeldig debug-nokkel og kan ikke oppdatere en tidligere installasjon."
           fi
-          ./gradlew :app:assembleRelease $ARGS
+          ./gradlew :app:assembleRelease "${ARGS[@]}"
 
       # archive: false laster opp APK-en som den er i stedet for pakket i en zip, så den kan
       # lastes rett ned på telefonen. Krever nøyaktig én fil, derfor full sti og ikke wildcard.
