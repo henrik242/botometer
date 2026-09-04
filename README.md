@@ -199,8 +199,32 @@ utviklerinnstillinger → *Ukjente kilder*. Appen dukker opp i bilen, eller i De
 $ANDROID_HOME/extras/google/auto/desktop-head-unit
 ```
 
-DHU gir ingen GPS-fart. Bruk `adb emu geo fix` mot emulator, eller mock provider, for å teste
-matchingen uten å kjøre bil.
+Bruk DHU under utvikling: samme launcher og samme avvisningslogg som i bilen, men sekunder pr.
+runde i stedet for en kjøretur. DHU gir ingen GPS-fart - bruk `adb emu geo fix` mot emulator, eller
+mock provider, for å teste matchingen uten å kjøre bil.
+
+### Dukker ikke appen opp i app-oversikten i bilen?
+
+`android:label` og `android:icon` **må** stå på `<service>`-deklarasjonen av `CarAppService`, ikke
+bare på `<application>`. Verten bruker attributtene på tjenesten til å representere appen i bilens
+system-UI, og arver dem ikke fra applikasjonen. Mangler de, har verten ingenting å tegne en
+oppføring med, og appen blir borte fra oversikten uten en eneste feilmelding. Det er den vanligste
+grunnen til «APK-en er installert, Ukjente kilder er på, men ingenting skjer».
+
+Sjekk fakta før du gjetter videre:
+
+```bash
+# Er tjenesten i det hele tatt installert, og overlevde den R8?
+adb shell pm query-services -a androidx.car.app.CarAppService
+adb shell dumpsys package no.synth.botometer | grep -i -A6 carappservice
+
+# Hvorfor verten dropper appen. Tøm loggen, koble til på nytt, les.
+adb logcat -c && adb logcat | grep -iE 'GH\.|Gearhead|CarApp'
+```
+
+Gearhead logger hvorfor den forkaster en app - feil kategori, for høy `minCarApiLevel`, feilet
+vertsvalidering. **Den loggen er svaret; den slår enhver hypotese.** Husk også at *Ukjente kilder*
+først slår inn etter at Android Auto er tvangsstoppet og koblet til på nytt.
 
 ## Personvern
 

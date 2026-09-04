@@ -37,9 +37,16 @@
             android:name="androidx.car.app.minCarApiLevel"
             android:value="3" />
 
+        <!-- label og icon MÅ stå her, ikke bare på <application>. Verten bruker
+             attributtene på selve CarAppService til å representere appen i bilens
+             system-UI, og uten dem har den ingenting å tegne en launcher-oppføring
+             med - appen blir stille borte fra app-oversikten i bilen.
+             https://developer.android.com/training/cars/apps/library/set-up-project -->
         <service
             android:name=".car.BotometerCarAppService"
-            android:exported="true">
+            android:exported="true"
+            android:label="@string/app_name"
+            android:icon="@drawable/ic_launcher">
             <intent-filter>
                 <action android:name="androidx.car.app.CarAppService" />
                 <!-- Speedometer er ikke en egen kategori i Car App Library. NAVIGATION er den
