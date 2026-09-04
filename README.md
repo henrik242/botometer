@@ -38,12 +38,17 @@ hovedenheter. GPS er dessuten *riktigere* for formålet: bilens speedometer vise
 høyt (ECE R39 tillater overrapportering, aldri underrapportering), mens politiet måler den faktiske
 farten. `CarSpeedSource` er med, men bare for å kunne vise avviket.
 
-**4. Bøtesatsene har ingen API.** Lovdata har ingen åpen API for forskriftstekst (Lovdata Pro er
-kommersiell), og satsene ligger uansett i en tabell som må tolkes, ikke parses. De ligger derfor
-som en versjonert asset i `app/src/main/assets/botesatser.json`, med `versjon` synlig i UI og i
-unit-testene. Gjeldende satser er fra **15. februar 2026** (FOR-2026-02-06-147, som endrer
-FOR-1990-06-29-492 § 1). Når satsene justeres — det skjer omtrent årlig — oppdaterer du JSON-filen
-og forventningene i `FineCalculatorTest`.
+**4. Bøtesatsene må tolkes, ikke parses.** Lovdata har et åpent datasett med gjeldende sentrale
+forskrifter (NLOD 2.0, uten autentisering), så kilden *er* maskinlesbar. Men beløpene står som
+løpende tekst i § 1, prikker og førerrett står i to andre forskrifter, og sikkerhetsfradraget
+står ikke i noen forskrift i det hele tatt — det er påtalepraksis. En parser ville produsert
+kronebeløp som er stille feil. Satsene ligger derfor som en versjonert asset i
+`app/src/main/assets/botesatser.json`, med `versjon` synlig i UI og i unit-testene, vedlikeholdt
+for hånd. Det som *er* automatisert er varselet: `.github/workflows/satser.yml` sammenlikner
+endringsdatoene i Lovdatas datasett med `satser/kilder.json` hver mandag, og feiler når en av de
+tre rettskildene er endret. Gjeldende satser er fra **15. februar 2026** (FOR-2026-02-06-147,
+som endrer FOR-1990-06-29-492 § 1). Når satsene justeres — det skjer omtrent årlig — oppdaterer
+du JSON-filen, forventningene i `FineCalculatorTest` og `sistEndret` i `satser/kilder.json`.
 
 ## Hva sideloading faktisk endrer
 
@@ -86,7 +91,7 @@ distraksjon uansett hvor nyttig den er.
 | Data | Kilde | Lisens |
 |---|---|---|
 | Fartsgrenser | NVDB API LES v4, vegobjekttype 105, egenskap 2021 | NLOD 2.0 |
-| Bøtesatser | Forskrift om forenklet forelegg (Lovdata), manuelt vedlikeholdt | — |
+| Bøtesatser | Forskrift om forenklet forelegg (Lovdata, NLOD 2.0), manuelt vedlikeholdt, endringsvarsel i CI | — |
 | Prikker / tap av førerrett | Prikkforskriften, tapsforskriften | — |
 
 NVDB-kallet:

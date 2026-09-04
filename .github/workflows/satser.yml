@@ -1,0 +1,27 @@
+name: Sjekk satser
+
+# Satsene justeres omtrent årlig, og en app som viser gamle tall ser ikke ut som den tar feil.
+# Denne jobben er varselet: den parser ingenting, den sammenlikner bare endringsdatoene i
+# Lovdatas åpne datasett med det satser/kilder.json har notert. Slår den ut, er oppdateringen
+# fortsatt en manuell jobb - det er poenget.
+on:
+  schedule:
+    # Mandag morgen, så et avvik ligger i innboksen ved ukestart.
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+  push:
+    paths:
+      - 'satser/**'
+      - 'tools/sjekk-satser.py'
+      - '.github/workflows/satser.yml'
+
+jobs:
+  sjekk:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Sammenlikn med Lovdata
+        run: python3 tools/sjekk-satser.py
