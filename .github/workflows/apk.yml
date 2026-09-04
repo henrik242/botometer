@@ -18,10 +18,13 @@ jobs:
         with:
           fetch-depth: 0
 
+      # JDK 21, ikke 17: Robolectric nekter å kjøre mot SDK 36 på en eldre JDK
+      # («Android SDK 36 requires Java 21»), og testene kjører mot targetSdk. Det er JDK-en som
+      # kjører Gradle - bytekoden appen bygges til er fortsatt 17, se compileOptions.
       - uses: actions/setup-java@v6
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: '21'
 
       - uses: gradle/actions/setup-gradle@v6
 
