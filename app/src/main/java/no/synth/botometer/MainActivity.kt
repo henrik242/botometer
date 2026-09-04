@@ -77,7 +77,14 @@ class MainActivity : ComponentActivity() {
     private fun render() {
         val t = tables.load()
         status.text = buildString {
+            // versionCode er antall commits. Er den lavere enn commiten du tror du tester,
+            // ligger det en gammel APK på telefonen og alt under er målt på feil kode.
             appendLine("Botometer ${BuildConfig.VERSION_NAME}")
+            appendLine("versionCode ${BuildConfig.VERSION_CODE}")
+            appendLine()
+
+            appendLine("ANDROID AUTO")
+            append(CarSetupDiagnostics.summary(this@MainActivity))
             appendLine()
 
             appendLine("BØTESATSER")

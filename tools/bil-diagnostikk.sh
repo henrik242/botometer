@@ -65,7 +65,29 @@ adb shell dumpsys package "$ANDROID_AUTO" | grep -E 'versionName' | head -1
 echo "Tvangsstopper Android Auto, så innstillingen leses på nytt ..."
 adb shell am force-stop "$ANDROID_AUTO"
 
-overskrift "6. Vertsloggen. DETTE ER SVARET."
+overskrift "6. A/B: oppfører debug-bygget seg annerledes?"
+# Debug-bygget skiller seg fra release på nøyaktig to ting: ingen R8, og ALLOW_ALL_CAR_HOSTS.
+# Dukker debug opp mens release ikke gjør det, er det ett av de to - og da vet vi hvor vi skal
+# lete i stedet for å gjette. Dukker ingen av dem opp, ligger årsaken hos verten, og steg 7 har
+# svaret.
+#
+# Dette er en MÅLING, ikke en løsning. Debug-bygget skal ikke bli stående på telefonen: med
+# ALLOW_ALL_CAR_HOSTS kan en vilkårlig app binde seg til CarAppService og lese posisjonen din.
+# Avinstaller det når du er ferdig, og la release beholde vertsvalideringen.
+cat <<'TIPS'
+Kjør, i denne rekkefølgen:
+
+    adb uninstall no.synth.botometer
+    ./gradlew :app:installDebug
+    # koble til, se etter appen i oversikten
+    adb uninstall no.synth.botometer      # IKKE la debug-bygget bli stående
+
+Dukket appen opp med debug, men ikke med release?  -> R8 eller vertsvalidering.
+                                                      Steg 3 og 4 over skiller dem.
+Dukket den ikke opp med noen av dem?               -> verten avviser appen. Steg 7.
+TIPS
+
+overskrift "7. Vertsloggen. DETTE ER SVARET."
 echo "Loggen tømmes nå. Koble til bilen eller start Desktop Head Unit, og vent til"
 echo "app-oversikten vises. Avslutt med Ctrl-C."
 echo
