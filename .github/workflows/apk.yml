@@ -28,9 +28,9 @@ jobs:
       - name: Test satstabellen
         run: ./gradlew :app:test
 
-      - name: Bygg release-APK
+      - name: Bygg release-APK og AAB
         env:
-          # Legg inn en egen keystore som secrets hvis du vil dele APK-en videre. Uten dem
+          # Legg inn en egen keystore som secrets hvis du vil dele appen videre. Uten dem
           # signeres den med debug-nøkkelen: installerbar, men beviser ingenting om opphav.
           BOTOMETER_KEYSTORE_BASE64: ${{ secrets.BOTOMETER_KEYSTORE_BASE64 }}
           BOTOMETER_KEYSTORE_PASSWORD: ${{ secrets.BOTOMETER_KEYSTORE_PASSWORD }}
@@ -49,11 +49,23 @@ jobs:
           else
             echo "::warning::Ingen keystore-secrets. APK-en signeres med en tilfeldig debug-nokkel og kan ikke oppdatere en tidligere installasjon."
           fi
-          ./gradlew :app:assembleRelease "${ARGS[@]}"
+          # Både APK og AAB. APK-en er nok for DHU og for Internal App Sharing, som tar imot
+          # begge deler. Et internt testspor krever derimot en AAB - og da også en fast
+          # keystore, se advarselen over: en ny tilfeldig debug-nøkkel pr. kjøring blir avvist
+          # ved andre opplasting.
+          ./gradlew :app:assembleRelease :app:bundleRelease "${ARGS[@]}"
 
-      # archive: false laster opp APK-en som den er i stedet for pakket i en zip, så den kan
+      # archive: false laster opp filen som den er i stedet for pakket i en zip, så den kan
       # lastes rett ned på telefonen. Krever nøyaktig én fil, derfor full sti og ikke wildcard.
+      # Uten name arver artefakten filnavnet, så de to havner ikke i samme navn.
       - uses: actions/upload-artifact@v7
         with:
           path: app/build/outputs/apk/release/app-release.apk
+          archive: false
+
+      # AAB-en lastes ikke ned og installeres på telefonen - den lastes opp til Play. Den er med
+      # fordi et internt testspor ikke tar imot APK.
+      - uses: actions/upload-artifact@v7
+        with:
+          path: app/build/outputs/bundle/release/app-release.aab
           archive: false
