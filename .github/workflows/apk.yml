@@ -1,0 +1,50 @@
+name: Bygg APK
+
+# Sideloading har ingen distribusjonskanal, så CI ER kanalen. Hver push bygger og tester,
+# og legger APK-en ved kjøringen som artefakt.
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    # Jobben laster bare opp en artefakt, og trenger ikke skrivetilgang til repoet.
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Test satstabellen
+        run: ./gradlew :app:test
+
+      - name: Bygg release-APK
+        env:
+          # Legg inn en egen keystore som secrets hvis du vil dele APK-en videre. Uten dem
+          # signeres den med debug-nøkkelen: installerbar, men beviser ingenting om opphav.
+          BOTOMETER_KEYSTORE_BASE64: ${{ secrets.BOTOMETER_KEYSTORE_BASE64 }}
+          BOTOMETER_KEYSTORE_PASSWORD: ${{ secrets.BOTOMETER_KEYSTORE_PASSWORD }}
+          BOTOMETER_KEY_ALIAS: ${{ secrets.BOTOMETER_KEY_ALIAS }}
+          BOTOMETER_KEY_PASSWORD: ${{ secrets.BOTOMETER_KEY_PASSWORD }}
+        run: |
+          ARGS=""
+          if [ -n "$BOTOMETER_KEYSTORE_BASE64" ]; then
+            echo "$BOTOMETER_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/botometer.jks"
+            ARGS="-Pbotometer.keystore=$RUNNER_TEMP/botometer.jks \
+                  -Pbotometer.keystorePassword=$BOTOMETER_KEYSTORE_PASSWORD \
+                  -Pbotometer.keyAlias=$BOTOMETER_KEY_ALIAS \
+                  -Pbotometer.keyPassword=$BOTOMETER_KEY_PASSWORD"
+          fi
+          ./gradlew :app:assembleRelease $ARGS
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: botometer-apk
+          path: app/build/outputs/apk/release/*.apk

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Botometer</string>
+    <string name="channel_location">Posisjonssporing</string>
+    <string name="notification_title">Botometer er aktiv</string>
+    <string name="notification_text">Leser posisjon for å vise fartsgrense og bøtenivå.</string>
+    <!-- Statens vegvesen krever at API-klienter identifiserer seg. Bytt til noe som
+         identifiserer din installasjon. Unngå personnavn: verdien havner i Vegvesenets logger. -->
+    <string name="nvdb_client_id" translatable="false">botometer-android/0.1</string>
+    <string name="refresh_rates">Oppdater satser</string>
+    <string name="grant_permissions">Gi tilganger</string>
+    <!-- Oppdateringskanal for bøtesatsene. Uten Play må satsene kunne hentes uavhengig av
+         APK-versjonen, ellers kjører gamle installasjoner utdaterte tall i stillhet. -->
+    <string name="satser_url" translatable="false">https://raw.githubusercontent.com/henrik242/botometer/main/satser/botesatser.json</string>
+</resources>

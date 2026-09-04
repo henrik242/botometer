@@ -1,0 +1,20 @@
+# Gradle
+.gradle/
+build/
+local.properties
+
+# Wrapper-JAR-en skal med, ellers må alle installere Gradle selv for å bygge.
+!gradle/wrapper/gradle-wrapper.jar
+
+# Android Studio / IntelliJ
+.idea/
+*.iml
+captures/
+.cxx/
+
+# Signering. Nøkler og passord hører hjemme i ~/.gradle/gradle.properties, ikke i repoet.
+*.jks
+*.keystore
+
+# macOS
+.DS_Store
