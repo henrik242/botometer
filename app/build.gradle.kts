@@ -105,6 +105,10 @@ android {
     }
 
     // Kotlins jvmTarget arves fra targetCompatibility med AGPs innebygde Kotlin-støtte.
+    //
+    // 17 er bytekoden appen bygges til, og har ingenting med JDK-en som kjører Gradle å gjøre.
+    // Den må være 21 eller nyere: Robolectric kjører testene mot targetSdk, og nekter SDK 36 på
+    // en eldre JDK.
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17

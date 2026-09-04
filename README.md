@@ -230,6 +230,9 @@ Etter review-runden står følgende igjen som uløst. Det viktigste først:
 
 ## Bygg og installer
 
+Testene krever **JDK 21 eller nyere**. Robolectric kjører dem mot `targetSdk`, og nekter SDK 36
+på en eldre JDK. Bytekoden appen bygges til er fortsatt 17.
+
 ```bash
 ./gradlew :app:test              # satstabellen verifiseres
 ./gradlew :app:assembleRelease   # → app/build/outputs/apk/release/
