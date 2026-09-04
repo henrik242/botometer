@@ -46,14 +46,19 @@ base { archivesName = "botometer-$commitSha" }
 
 android {
     namespace = "no.synth.botometer"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "no.synth.botometer"
         minSdk = 26
-        // Ingen Play-review betyr ingen tvungen targetSdk-jakt. Vi holder den likevel oppdatert:
-        // oppførselen til foreground services henger på den, og å ligge igjen gir subtile feil.
-        targetSdk = 35
+        // Play krever gjeldende targetSdk ved opplasting til et utgivelsesspor - «must target at
+        // least API level 36». Antakelsen om at distribusjon utenom Play sparte oss for
+        // targetSdk-jakten holdt bare så lenge artefakten aldri skulle gjennom Play, og en
+        // templat-app må dit for å vises i bilen i det hele tatt.
+        //
+        // Den skulle vært oppdatert uansett: oppførselen til foreground services henger på den,
+        // og å ligge igjen gir subtile feil.
+        targetSdk = 36
         versionCode = commitCount
         versionName = "$commitCount ($commitSha, $commitDate)"
     }

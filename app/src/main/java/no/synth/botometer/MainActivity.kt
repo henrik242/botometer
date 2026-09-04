@@ -11,6 +11,8 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
 import no.synth.botometer.fine.FineTableRepository
@@ -51,19 +53,26 @@ class MainActivity : ComponentActivity() {
             setOnClickListener { askPermissions() }
         }
 
-        setContentView(
-            ScrollView(this).apply {
-                addView(
-                    LinearLayout(this@MainActivity).apply {
-                        orientation = LinearLayout.VERTICAL
-                        setPadding(48, 64, 48, 64)
-                        addView(status)
-                        addView(refresh)
-                        addView(permissions)
-                    }
-                )
-            }
-        )
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(status)
+            addView(refresh)
+            addView(permissions)
+        }
+
+        // Fra targetSdk 36 tegner appen alltid under status- og navigasjonsfeltet;
+        // windowOptOutEdgeToEdgeEnforcement er avviklet, så det finnes ikke lenger en vei ut.
+        // Uten dette havner «Botometer <versjon>» bak klokka og knappene bak navigasjonslinja.
+        // Systemets innrykk legges oppå vårt eget, ikke i stedet for det.
+        ViewCompat.setOnApplyWindowInsetsListener(content) { view, insets ->
+            val bars = insets.getInsets(
+                WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout()
+            )
+            view.setPadding(48 + bars.left, 64 + bars.top, 48 + bars.right, 64 + bars.bottom)
+            insets
+        }
+
+        setContentView(ScrollView(this).apply { addView(content) })
 
         askPermissions()
         refreshIfStale()
