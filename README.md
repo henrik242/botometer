@@ -99,8 +99,15 @@ tatt - uten den måtte hver endring gjennom en opplasting.
 
 **Det som ikke endrer seg med noen av dem:** template-restriksjonene håndheves av *bilverten* i
 runtime, ikke av Play. Du får fortsatt bare tegne fritt inne i `NavigationTemplate`s surface.
-`CAR_SPEED` er også vertsgatet, ikke distribusjonsgatet. Og siden Internal App Sharing ikke er en
-utgivelse, gjelder det heller ikke noen tvungen targetSdk-jakt.
+`CAR_SPEED` er også vertsgatet, ikke distribusjonsgatet.
+
+**Og targetSdk-jakten slipper du ikke unna.** Et utgivelsesspor krever gjeldende nivå - «must
+target at least API level 36» - og en templat-app må gjennom Play for å vises i bilen i det hele
+tatt. Antakelsen om at Play-fri distribusjon sparte oss for den holdt bare så lenge artefakten
+aldri skulle den veien. `targetSdk` følger derfor Play, og oppgraderingen har konsekvenser å ta
+med: fra 36 tegner appen alltid under status- og navigasjonsfeltet, og
+`windowOptOutEdgeToEdgeEnforcement` er avviklet. `MainActivity` legger systemets innrykk oppå sitt
+eget i stedet.
 
 **Oppdateringskanalen for satsene, som fortsatt er det viktigste designvalget:** Internal App
 Sharing er ingen oppdateringskanal - den varsler ikke, og den oppdaterer ikke noe av seg selv. En
