@@ -1,0 +1,123 @@
+package no.synth.botometer.speed
+
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.app.Service
+import android.content.Context
+import android.content.Intent
+import android.content.pm.ServiceInfo
+import android.os.Build
+import android.os.IBinder
+import android.util.Log
+import androidx.core.app.NotificationCompat
+import androidx.core.app.ServiceCompat
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.launch
+import no.synth.botometer.MainActivity
+import no.synth.botometer.R
+
+/**
+ * Eier GPS-abonnementet så lenge speedometeret vises i bilen.
+ *
+ * En foreground service av typen `location` er den sanksjonerte måten å lese posisjon uten at
+ * appen er synlig på telefonen. Alternativet, ACCESS_BACKGROUND_LOCATION, er både strengere
+ * regulert i Play og unødvendig her: brukeren ser aktivt på appen, den er bare på en annen skjerm.
+ *
+ * Å starte en foreground service fra en CarAppService er tillatt fordi bilverten er en
+ * forgrunnsapp som er bundet til prosessen vår, og bindingen løfter oss til forgrunnsviktighet.
+ * Dette er samme mønster som Googles egne navigasjonseksempler bruker.
+ */
+class LocationForegroundService : Service() {
+
+    private val scope = CoroutineScope(SupervisorJob())
+    private var job: Job? = null
+
+    override fun onBind(intent: Intent?): IBinder? = null
+
+    override fun onCreate() {
+        super.onCreate()
+        createChannel()
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        ServiceCompat.startForeground(
+            this,
+            NOTIFICATION_ID,
+            buildNotification(),
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
+            } else 0,
+        )
+
+        if (job == null) {
+            job = scope.launch {
+                GpsSpeedSource(this@LocationForegroundService).fixes()
+                    .catch { Log.w(TAG, "GPS-strømmen stoppet: ${it.message}") }
+                    .collect { SpeedFeed.publish(it) }
+            }
+        }
+
+        // START_NOT_STICKY: mister vi tilgang eller blir drept, skal vi ikke gjenoppstå av oss selv.
+        // Skjermen i bilen er den som bestemmer om vi skal kjøre.
+        return START_NOT_STICKY
+    }
+
+    override fun onDestroy() {
+        job = null
+        scope.cancel()
+        SpeedFeed.clear()
+        super.onDestroy()
+    }
+
+    private fun createChannel() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        val channel = NotificationChannel(
+            CHANNEL_ID,
+            getString(R.string.channel_location),
+            NotificationManager.IMPORTANCE_LOW,   // ingen lyd, ingen heads-up
+        ).apply { setShowBadge(false) }
+        getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
+    }
+
+    private fun buildNotification(): Notification {
+        val open = PendingIntent.getActivity(
+            this, 0,
+            Intent(this, MainActivity::class.java),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+        return NotificationCompat.Builder(this, CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_stat_speed)
+            .setContentTitle(getString(R.string.notification_title))
+            .setContentText(getString(R.string.notification_text))
+            .setContentIntent(open)
+            .setOngoing(true)
+            .setSilent(true)
+            .setCategory(NotificationCompat.CATEGORY_NAVIGATION)
+            .build()
+    }
+
+    companion object {
+        private const val TAG = "LocationFgService"
+        private const val CHANNEL_ID = "location"
+        private const val NOTIFICATION_ID = 1
+
+        fun start(context: Context) {
+            val intent = Intent(context, LocationForegroundService::class.java)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(intent)
+            } else {
+                context.startService(intent)
+            }
+        }
+
+        fun stop(context: Context) {
+            context.stopService(Intent(context, LocationForegroundService::class.java))
+        }
+    }
+}

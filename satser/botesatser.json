@@ -1,0 +1,60 @@
+{
+  "versjon": "2026-02-15",
+  "hjemmel": "Forskrift om forenklet forelegg i vegtrafikksaker (FOR-1990-06-29-492) § 1, endret ved FOR-2026-02-06-147. Prikker: prikkforskriften. Tap av førerrett: tapsforskriften.",
+  "kilde": "Manuelt vedlikeholdt mot Lovdata. Lovdata har ingen åpen API for forskriftstekst - se README.",
+  "toleranse": {
+    "fradragKmt": 3,
+    "fradragProsentOverKmt": 100,
+    "fradragProsent": 3.0,
+    "merknad": "Politiet gjør et sikkerhetsfradrag i målt fart før fartsoverskridelsen fastsettes. Verdiene her er en vanlig praksis-tilnærming, ikke en rettsregel."
+  },
+  "grupper": [
+    {
+      "id": "inntil60",
+      "navn": "Fartsgrense 60 km/t eller lavere",
+      "fartsgrenseMin": 0,
+      "fartsgrenseMaks": 60,
+      "trinn": [
+        { "overMin": 1,  "overMaks": 5,    "bot": 1250,  "prikker": 0, "forerrett": "BEHOLDER" },
+        { "overMin": 6,  "overMaks": 10,   "bot": 3350,  "prikker": 0, "forerrett": "BEHOLDER" },
+        { "overMin": 11, "overMaks": 15,   "bot": 5950,  "prikker": 2, "forerrett": "BEHOLDER" },
+        { "overMin": 16, "overMaks": 20,   "bot": 8650,  "prikker": 3, "forerrett": "BEHOLDER" },
+        { "overMin": 21, "overMaks": 25,   "bot": 13450, "prikker": 3, "forerrett": "VURDERES" },
+        { "overMin": 26, "overMaks": null, "bot": null,  "prikker": 3, "forerrett": "INNDRAS", "anmeldelse": true }
+      ]
+    },
+    {
+      "id": "70til80",
+      "navn": "Fartsgrense 70-80 km/t",
+      "fartsgrenseMin": 70,
+      "fartsgrenseMaks": 80,
+      "trinn": [
+        { "overMin": 1,  "overMaks": 5,    "bot": 1250,  "prikker": 0, "forerrett": "BEHOLDER" },
+        { "overMin": 6,  "overMaks": 10,   "bot": 3350,  "prikker": 0, "forerrett": "BEHOLDER" },
+        { "overMin": 11, "overMaks": 15,   "bot": 5350,  "prikker": 0, "forerrett": "BEHOLDER" },
+        { "overMin": 16, "overMaks": 20,   "bot": 7450,  "prikker": 2, "forerrett": "BEHOLDER" },
+        { "overMin": 21, "overMaks": 25,   "bot": 10100, "prikker": 3, "forerrett": "BEHOLDER" },
+        { "overMin": 26, "overMaks": 30,   "bot": 13450, "prikker": 3, "forerrett": "VURDERES" },
+        { "overMin": 31, "overMaks": 35,   "bot": 16050, "prikker": 3, "forerrett": "VURDERES" },
+        { "overMin": 36, "overMaks": null, "bot": null,  "prikker": 3, "forerrett": "INNDRAS", "anmeldelse": true }
+      ]
+    },
+    {
+      "id": "fra90",
+      "navn": "Fartsgrense 90 km/t eller høyere",
+      "fartsgrenseMin": 90,
+      "fartsgrenseMaks": 130,
+      "trinn": [
+        { "overMin": 1,  "overMaks": 5,    "bot": 1250,  "prikker": 0, "forerrett": "BEHOLDER" },
+        { "overMin": 6,  "overMaks": 10,   "bot": 3350,  "prikker": 0, "forerrett": "BEHOLDER" },
+        { "overMin": 11, "overMaks": 15,   "bot": 5350,  "prikker": 0, "forerrett": "BEHOLDER" },
+        { "overMin": 16, "overMaks": 20,   "bot": 7450,  "prikker": 2, "forerrett": "BEHOLDER" },
+        { "overMin": 21, "overMaks": 25,   "bot": 10100, "prikker": 3, "forerrett": "BEHOLDER" },
+        { "overMin": 26, "overMaks": 30,   "bot": 13450, "prikker": 3, "forerrett": "VURDERES" },
+        { "overMin": 31, "overMaks": 35,   "bot": 16050, "prikker": 3, "forerrett": "VURDERES" },
+        { "overMin": 36, "overMaks": 40,   "bot": 16700, "prikker": 3, "forerrett": "VURDERES", "kunMotorveg": true },
+        { "overMin": 41, "overMaks": null, "bot": null,  "prikker": 3, "forerrett": "INNDRAS", "anmeldelse": true }
+      ]
+    }
+  ]
+}
