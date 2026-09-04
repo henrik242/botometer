@@ -66,6 +66,30 @@ class CarAppManifestTest {
         assertEquals("NAVIGATION-kategorien mangler i intent-filteret", 1, medKategori.size)
     }
 
+    /**
+     * Play avviser en artefakt som hevder å være både Android Automotive OS-app og Android
+     * Auto-app: «cannot declare 'android.hardware.type.automotive' device feature and
+     * 'com.google.android.gms.car.application' metadata at the same time». Det oppdages først
+     * ved opplasting, altså etter et grønt bygg og en ferdig APK.
+     *
+     * Appen er projisert (app-projected), så ingen av AOS-markørene hører hjemme her. Vi krever
+     * at det ikke finnes <uses-feature> i det hele tatt - da kan ikke assertet gå grønt av at
+     * lista var tom fordi Robolectric ikke leste den.
+     */
+    @Test
+    fun `ingen uses-feature, så Play ikke avviser bundelen`() {
+        @Suppress("DEPRECATION")
+        val pkg = context.packageManager
+            .getPackageInfo(context.packageName, PackageManager.GET_CONFIGURATIONS)
+
+        val features = pkg.reqFeatures?.mapNotNull { it.name }.orEmpty()
+        assertEquals(
+            "AOS-markører og gms.car.application-metadata utelukker hverandre i Play",
+            emptyList<String>(),
+            features,
+        )
+    }
+
     @Test
     fun `metadata verten leser før den binder seg er på plass`() {
         @Suppress("DEPRECATION")

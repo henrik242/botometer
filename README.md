@@ -76,6 +76,12 @@ du bedt om en AAB, står du sannsynligvis på opplastingssiden til et utgivelses
 Internal App Sharing. Signeringsnøkkelen spiller heller ingen rolle her: Play signerer opplastingen
 om med sitt eget testsertifikat, så APK-en fra CI duger som den er, debug-nøkkel og alt.
 
+Play avviser forresten en artefakt som hevder å være både Automotive OS-app og Android Auto-app:
+«cannot declare `android.hardware.type.automotive` device feature and
+`com.google.android.gms.car.application` metadata at the same time». Manifestet har derfor ingen
+`<uses-feature>` for AOS - appen er projisert. Det oppdages først ved opplasting, altså etter et
+grønt bygg, så `CarAppManifestTest` holder dem ute i stedet.
+
 **Internt testspor** er alternativet om du vil ha flere enn deg selv på den, med opptil 100
 testere og oppdateringer som er ute i løpet av minutter. Det sporet krever **AAB** - og en *fast*
 keystore: CI signerer med en ny tilfeldig debug-nøkkel for hver kjøring når secretsene mangler, og
@@ -221,8 +227,12 @@ Etter review-runden står følgende igjen som uløst. Det viktigste først:
 ./gradlew :app:test              # satstabellen verifiseres
 ./gradlew :app:assembleRelease   # → app/build/outputs/apk/release/
 ./gradlew :app:bundleRelease     # → app/build/outputs/bundle/release/  (AAB, til Play)
-adb install -r app/build/outputs/apk/release/app-release.apk   # nok for DHU, ikke for bil
+adb install -r app/build/outputs/apk/release/botometer-*-release.apk   # nok for DHU, ikke bil
 ```
+
+Filnavnene bærer kortshaen - `botometer-<kortsha>-release.apk` - av samme grunn som versionName
+gjør det: en fil i nedlastingsmappa må kunne si hvilken commit den er uten at du installerer den
+først.
 
 Bruk `assembleRelease`, ikke `installDebug`: debug-bygg har `ALLOW_ALL_CAR_HOSTS = true`.
 

@@ -35,6 +35,15 @@ val commitCount = git("rev-list", "--count", "HEAD")?.toIntOrNull() ?: 1
 val commitSha = git("rev-parse", "--short", "HEAD") ?: "ukjent"
 val commitDate = git("log", "-1", "--format=%cs") ?: "ukjent"
 
+/**
+ * Samme begrunnelse som for versionName: en APK eller AAB i naturen er bare en fil, og må selv
+ * kunne fortelle hvilken kildekode den er bygget fra. Filnavnet er det første du ser i
+ * nedlastingsmappa, lenge før du får åpnet appen og lest versjonen inni den.
+ *
+ * Gir botometer-<kortsha>-release.apk og tilsvarende .aab.
+ */
+base { archivesName = "botometer-$commitSha" }
+
 android {
     namespace = "no.synth.botometer"
     compileSdk = 35

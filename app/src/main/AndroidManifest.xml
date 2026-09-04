@@ -27,12 +27,17 @@
         <package android:name="com.google.android.projection.gearhead" />
     </queries>
 
-    <uses-feature
-        android:name="android.hardware.type.automotive"
-        android:required="false" />
-    <uses-feature
-        android:name="android.software.car.templates_host"
-        android:required="false" />
+    <!-- Ingen <uses-feature> for android.hardware.type.automotive eller
+         android.software.car.templates_host. De to markerer en app som Android Automotive
+         OS-app, mens com.google.android.gms.car.application-metadataen over markerer den som
+         Android Auto-app (projisert fra telefonen). Play avviser en artefakt som hevder begge
+         deler: «The app cannot declare 'android.hardware.type.automotive' device feature and
+         'com.google.android.gms.car.application' metadata at the same time.»
+
+         Denne appen er projisert - se app-projected i build.gradle.kts. Skal den en gang
+         bygges for Automotive OS, er det en egen variant med app-automotive, uten
+         gms.car.application-metadataen, og da hører disse to hjemme igjen. CarAppManifestTest
+         holder dem ute i mellomtiden: Play oppdager det først ved opplasting. -->
 
     <application
         android:name=".BotometerApp"
