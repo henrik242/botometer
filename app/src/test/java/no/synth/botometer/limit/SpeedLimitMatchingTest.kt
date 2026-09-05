@@ -24,8 +24,7 @@ import org.robolectric.RobolectricTestRunner
 
 /**
  * Kart-matchingen, målt på det den faktisk skal svare på: hvor sikker er den, når har den lov
- * til å bytte fartsgrense, hva gjør den med et dårlig GPS-fix, og ser den soneskiftet som
- * kommer.
+ * til å bytte fartsgrense, og hva gjør den med et dårlig GPS-fix.
  *
  * Repoet hadde ingen tester i det hele tatt - `now` var injiserbar for formålet, men
  * [NvdbClient] måtte kunne peke på en lokal server først. Det kan den, via `baseUrl`.
@@ -227,51 +226,5 @@ class SpeedLimitMatchingTest {
         val after = repo.limitAt(LatLon(59.900000, 10.603000), heading, 80.0)
         assertEquals("den gamle grensen finnes ikke lenger her", 50, after!!.limitKmt)
         assertFalse("og det skal være et ekte treff, ikke et cachet ett", after.stale)
-    }
-
-    // ---- soneskiftet som kommer ------------------------------------------------------------
-
-    @Test
-    fun `en lavere sone rett foran meldes fra om`() = runBlocking {
-        // 80-sone fram til lon 10.60269 (~150 m foran oss), 50-sone videre.
-        serve(
-            road(1, 80, lat = 59.900000, west = 10.5900, east = 10.60269),
-            road(2, 50, lat = 59.900000, west = 10.60269, east = 10.6200),
-        )
-        val repo = repository()
-
-        // 90 km/t gir 8 sekunder * 25 m/s = 200 m fram, altså inne i 50-sonen.
-        val match = firstMatch(repo, LatLon(59.900000, 10.600000), speedKmt = 90.0)
-
-        assertEquals("her og nå gjelder fortsatt 80", 80, match.limitKmt)
-        assertEquals(50, match.aheadLimitKmt)
-        assertEquals(200.0, match.aheadMeters!!.toDouble(), 5.0)
-    }
-
-    @Test
-    fun `en hoeyere sone foran er ingen nyhet`() = runBlocking {
-        serve(
-            road(1, 50, lat = 59.900000, west = 10.5900, east = 10.60269),
-            road(2, 80, lat = 59.900000, west = 10.60269, east = 10.6200),
-        )
-        val repo = repository()
-
-        val match = firstMatch(repo, LatLon(59.900000, 10.600000), speedKmt = 90.0)
-
-        assertEquals(50, match.limitKmt)
-        assertNull("vi varsler om det som kan koste deg noe, ikke om lettelser", match.aheadLimitKmt)
-    }
-
-    @Test
-    fun `i gangfart ser vi ikke framover`() = runBlocking {
-        serve(
-            road(1, 80, lat = 59.900000, west = 10.5900, east = 10.60269),
-            road(2, 50, lat = 59.900000, west = 10.60269, east = 10.6200),
-        )
-        val repo = repository()
-
-        val match = firstMatch(repo, LatLon(59.900000, 10.600000), speedKmt = 5.0)
-
-        assertNull("«snart 50» er ingen nyhet når du står nesten stille", match.aheadLimitKmt)
     }
 }

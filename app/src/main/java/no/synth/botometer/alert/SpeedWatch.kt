@@ -56,14 +56,6 @@ class SpeedWatch(
         /** Grensen som er lagt til grunn - manuell om brukeren har satt en. */
         val limitKmt: Int?,
         val manualLimit: Boolean,
-        /** Lavere fartsgrense like foran, og hva farten du har nå ville kostet der. */
-        val upcoming: Upcoming? = null,
-    )
-
-    data class Upcoming(
-        val limitKmt: Int,
-        val meters: Int,
-        val estimate: FineEstimate,
     )
 
     fun readings(): Flow<Reading> =
@@ -107,10 +99,6 @@ class SpeedWatch(
         // En manuell grense sier ingenting om vegtype, så motorvegsatsen forblir usikker der.
         val motorway = if (manual != null) null else match?.motorway
 
-        // Bare når grensen kommer fra kartet: har brukeren satt grensen selv, vet vi ingenting
-        // om hva som kommer.
-        val upcoming = if (manual == null) upcomingFrom(match, speed) else null
-
         return Reading(
             fix = fix,
             match = match,
@@ -119,14 +107,7 @@ class SpeedWatch(
             speedKmt = speed,
             limitKmt = limit,
             manualLimit = manual != null,
-            upcoming = upcoming,
         )
-    }
-
-    private fun upcomingFrom(match: LimitMatch?, speedKmt: Double): Upcoming? {
-        val limit = match?.aheadLimitKmt ?: return null
-        val meters = match.aheadMeters ?: return null
-        return Upcoming(limit, meters, calculator.estimate(speedKmt, limit))
     }
 
     private companion object {
