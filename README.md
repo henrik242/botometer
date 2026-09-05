@@ -322,6 +322,12 @@ Etter review-runden står følgende igjen som uløst. Det viktigste først:
   fortsatt stemmer om kodingen endrer seg. Diagnostikken viser antall motorvegsegmenter per rute:
   står den på 0 der du vet du kjørte motorveg, er antakelsen gal. `MotorwayLookupTest` låser
   begge formene.
+- **Posisjonssporingen er ikke referansetelt mellom flatene.** Bilskjermen og telefonskjermen
+  starter og stopper den samme `LocationForegroundService`. Vises begge samtidig, slår den ene av
+  GPS-en for den andre når den lukkes - «Avslutt» på telefonen stopper også bilskjermens fart.
+  Knappen gjør ikke dette verre enn tilbake-knappen alltid har gjort, men den gjør det lettere å
+  treffe. Fiksen er en telling av hvem som vil ha sporingen, med opprydding når en flate dør uten
+  å si fra.
 - **Ingen høydeinformasjon i matchingen.** Bru over veg og tunnel under veg matcher mot hverandre.
   NVDB leverer Z i WKT-en; `Wkt.parsePoint` kaster den i dag.
 - **Farge er eneste koding** av alvorlighetsgrad, som utelukker rød-grønn fargeblindhet.
@@ -418,6 +424,12 @@ Derfor finnes appen på tre flater i stedet:
 | **Bilskjermen** | Botometer er valgt i bilen | Speedometeret, tegnet på `NavigationTemplate` |
 | **Telefonen** | Maps eier bilskjermen | Samme tall, stor skrift, skjermen holdes våken |
 | **Varsel** | Alltid, i bakgrunnen | Heads-up når farten krysser inn i et nytt bøtenivå |
+
+**Begge skjermene har en «Avslutt»-knapp, og den betyr slutt.** Den stopper posisjonssporingen,
+ikke bare visningen: foreground-servicen legger seg ned og det vedvarende varselet forsvinner.
+Uten den var eneste vei ut av bilskjermen å starte en annen navigasjonsapp - og da lever servicen
+videre, appen leser posisjon, og varselet står, uten at noe på skjermen forklarer hvorfor. En app
+som leser GPS må kunne skrus av der den vises.
 
 `LocationForegroundService` eier GPS-abonnementet og lever videre når Maps overtar skjermen, så
 varslene virker uansett hvem som eier bilskjermen. Varselet er `IMPORTANCE_HIGH` og utvidet med
