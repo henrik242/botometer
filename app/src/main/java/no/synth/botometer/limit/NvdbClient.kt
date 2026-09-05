@@ -52,6 +52,8 @@ class NvdbException(
 class NvdbClient(
     private val clientName: String,
     private val http: OkHttpClient = defaultHttp(),
+    /** Injiserbar så feilhåndteringen kan testes mot en lokal server, uten nett. */
+    private val baseUrl: String = BASE,
 ) {
     private val json = Json { ignoreUnknownKeys = true }
 
@@ -74,7 +76,7 @@ class NvdbClient(
 
     private fun fetchPage(bbox: BBox, start: String?): Pair<List<SpeedLimitSegment>, String?> {
         val url = buildString {
-            append(BASE)
+            append(baseUrl)
             append("/vegobjekter/api/v4/vegobjekter/$TYPE_FARTSGRENSE")
             append("?kartutsnitt=${bbox.west},${bbox.south},${bbox.east},${bbox.north}")
             append("&srid=4326")
@@ -95,7 +97,16 @@ class NvdbClient(
         val body = try {
             http.newCall(req).execute().use { resp ->
                 if (!resp.isSuccessful) {
-                    throw NvdbException(resp.code, "NVDB svarte ${resp.code}")
+                    // Feilkroppen MÅ være med. NVDB forklarer i den hvilken parameter den ikke
+                    // likte, og uten den står brukeren igjen med «NVDB svarte 400» - et tall som
+                    // sier at noe er permanent galt, men ikke hva. Det er den eneste beskjeden
+                    // som finnes: appen har ingen crashlogg, og en telefon har ingen adb.
+                    val forklaring = runCatching { resp.body?.string() }.getOrNull()
+                        ?.trim()?.take(MAX_ERROR_BODY)
+                    throw NvdbException(
+                        resp.code,
+                        "NVDB svarte ${resp.code}" + if (forklaring.isNullOrEmpty()) "" else ": $forklaring",
+                    )
                 }
                 resp.body?.string() ?: throw NvdbException(resp.code, "Tomt svar fra NVDB")
             }
@@ -145,6 +156,9 @@ class NvdbClient(
         const val TYPE_FARTSGRENSE = 105
         const val EGENSKAP_FARTSGRENSE = 2021
         private const val PAGE_SIZE = 1000
+
+        /** Nok til å få med NVDBs forklaring, lite nok til å ikke fylle diagnostikkflaten. */
+        private const val MAX_ERROR_BODY = 400
 
         /** 25 sider a 1000 objekter er langt over det en 2x2 km rute kan inneholde. */
         private const val MAX_PAGES = 25
