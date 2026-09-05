@@ -23,7 +23,8 @@ import no.synth.botometer.limit.ManualLimit
 import no.synth.botometer.limit.MatchConfidence
 import no.synth.botometer.speed.FixFreshness
 import no.synth.botometer.speed.GpsSpeedSource
-import no.synth.botometer.speed.LocationForegroundService
+import no.synth.botometer.speed.Tracking
+import no.synth.botometer.speed.TrackingHolders
 
 /**
  * Speedometeret på telefonskjermen, til bruk mens Google Maps eier bilskjermen.
@@ -102,12 +103,18 @@ class PhoneSpeedometerActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
-        if (GpsSpeedSource.hasLocationPermission(this)) LocationForegroundService.start(this)
+        if (GpsSpeedSource.hasLocationPermission(this)) {
+            Tracking.acquire(this, TrackingHolders.Holder.PHONE)
+        }
     }
 
+    /**
+     * Slipper bare telefonens egen holder. Er bilen i gang, fortsetter sporingen der - ellers
+     * ville et bytte til Maps på telefonen slått av farten på bilskjermen.
+     */
     override fun onStop() {
         super.onStop()
-        LocationForegroundService.stop(this)
+        Tracking.release(TrackingHolders.Holder.PHONE)
     }
 
     /**
@@ -162,7 +169,8 @@ class PhoneSpeedometerActivity : ComponentActivity() {
     }
 
     private fun exit() {
-        LocationForegroundService.stop(this)
+        // Slutt for alle, ikke bare for denne skjermen: «Avslutt» betyr slutt.
+        Tracking.stopAll()
         finish()
     }
 

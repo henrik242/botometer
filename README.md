@@ -322,12 +322,6 @@ Etter review-runden står følgende igjen som uløst. Det viktigste først:
   fortsatt stemmer om kodingen endrer seg. Diagnostikken viser antall motorvegsegmenter per rute:
   står den på 0 der du vet du kjørte motorveg, er antakelsen gal. `MotorwayLookupTest` låser
   begge formene.
-- **Posisjonssporingen er ikke referansetelt mellom flatene.** Bilskjermen og telefonskjermen
-  starter og stopper den samme `LocationForegroundService`. Vises begge samtidig, slår den ene av
-  GPS-en for den andre når den lukkes - «Avslutt» på telefonen stopper også bilskjermens fart.
-  Knappen gjør ikke dette verre enn tilbake-knappen alltid har gjort, men den gjør det lettere å
-  treffe. Fiksen er en telling av hvem som vil ha sporingen, med opprydding når en flate dør uten
-  å si fra.
 - **Ingen høydeinformasjon i matchingen.** Bru over veg og tunnel under veg matcher mot hverandre.
   NVDB leverer Z i WKT-en; `Wkt.parsePoint` kaster den i dag.
 - **Farge er eneste koding** av alvorlighetsgrad, som utelukker rød-grønn fargeblindhet.
@@ -434,6 +428,22 @@ som leser GPS må kunne skrus av der den vises.
 `LocationForegroundService` eier GPS-abonnementet og lever videre når Maps overtar skjermen, så
 varslene virker uansett hvem som eier bilskjermen. Varselet er `IMPORTANCE_HIGH` og utvidet med
 `CarAppExtender` - uten den vises ingen varsler på bilskjermen i det hele tatt.
+
+**Det sto her lenge før det var sant.** Sporingen fulgte skjermene: `SpeedometerScreen.onStop`
+stoppet tjenesten, og verten stopper skjermen vår i det en annen navigasjonsapp tar over
+bilskjermen. GPS-en døde altså - og med den fartsvarslene - i nøyaktig det øyeblikket varselet
+ble den eneste flaten appen hadde igjen. Den ene tingen de tre flatene finnes for, virket ikke.
+
+Nå teller `Tracking` hvem som vil ha sporing, og bilen holder på den så lenge **økta** lever, ikke
+så lenge skjermen vår vises. Økta destrueres når appen avsluttes i bilen eller telefonen kobles
+fra; det er der turen er over. Telefonen holder på sporingen mens speedometeret er synlig, som
+før, så tilbake-knappen der fortsatt slår av GPS-en når telefonen er den eneste flaten i bruk -
+men den slår den ikke lenger av for bilen. `TrackingHolders` er tellingen alene, uten Android
+rundt seg, og `TrackingHoldersTest` låser den.
+
+Blir varslene likevel borte, er neste sted å se telefon-appen: er varsler slått av for appen,
+kastes de av systemet uten en eneste feilmelding, og det ser ut nøyaktig som en app som ikke
+varsler. «TILGANGER» sier fra om det.
 
 **Varselet kommer bare ved overgang til et nytt nivå.** Et varsel per GPS-fix er ikke et varsel,
 det er støy, og Google er tydelig på at heads-up er forbeholdt noe «drive-critical, time
