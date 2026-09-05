@@ -88,8 +88,12 @@ class SpeedLimitRepository(
 
                 // Kursfilter: uten det plukker vi lett en parallell veg eller en avkjøring med
                 // annen fartsgrense. Under gangfart er kursen fra GPS ubrukelig, så da dropper vi det.
+                //
+                // axisDelta, ikke headingDelta: en veg er en linje, ikke en pil. Kjører du motsatt
+                // vei av den NVDB har digitalisert, er kursavviket 180° selv om du ligger midt i
+                // vegbanen - og da forkastet filteret riktig veg.
                 val headingPenalty = if (headingDeg != null && speedKmt > 8) {
-                    val delta = Geo.headingDelta(headingDeg, hit.bearingDeg)
+                    val delta = Geo.axisDelta(headingDeg, hit.bearingDeg)
                     if (delta > maxHeadingDeltaDeg) {
                         rejectedByHeading = true
                         continue
@@ -107,7 +111,7 @@ class SpeedLimitRepository(
                 nearby += Triple(
                     seg,
                     segNearest,
-                    headingDeg?.let { Geo.headingDelta(it, segBearing) },
+                    headingDeg?.let { Geo.axisDelta(it, segBearing) },
                 )
             }
         }

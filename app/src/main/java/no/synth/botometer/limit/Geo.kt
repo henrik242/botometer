@@ -41,10 +41,27 @@ object Geo {
         return SegmentHit(hypot(px - cx, py - cy), bearing)
     }
 
-    /** Minste vinkel mellom to kurser, 0-180. Retning uten fortegn, siden vegen kan være tolinjet. */
+    /** Minste vinkel mellom to kurser, 0-180. */
     fun headingDelta(a: Double, b: Double): Double {
         val d = abs((a - b + 540.0) % 360.0 - 180.0)
         return d
+    }
+
+    /**
+     * Vinkel mellom to *akser*, 0-90. Motsatt rettet regnes som samme akse.
+     *
+     * Dette, ikke [headingDelta], er det kart-matchingen skal bruke. En veg er en linje, ikke en
+     * pil: hvilken vei NVDB har digitalisert den har ingenting med kjøreretningen din å gjøre.
+     * Kjører du motsatt vei av digitaliseringsretningen, er kursavviket 180° selv om du ligger
+     * midt i vegbanen.
+     *
+     * Det var nettopp det som skjedde: EV18 lå 5 meter unna med Δ173° og ble forkastet av
+     * kursfilteret, mens en kommunal veg 15 meter unna med Δ27° vant. Appen viste 40 der det var
+     * 50. Foldet om aksen blir 173° til 7°, og riktig veg vinner på avstand slik den skal.
+     */
+    fun axisDelta(a: Double, b: Double): Double {
+        val d = headingDelta(a, b)
+        return if (d > 90.0) 180.0 - d else d
     }
 
     /** Punkt `meters` fram i kurs `bearing`. Brukes til å forhåndslaste ruta foran bilen. */

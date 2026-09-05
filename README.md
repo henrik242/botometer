@@ -187,6 +187,12 @@ lokalveg eller en avkjøringsrampe med annen fartsgrense. `SpeedLimitRepository`
 som avviker mer enn 45° fra GPS-kursen (og dropper filteret under 8 km/t, der kursen fra GPS er
 støy).
 
+Avviket måles om **aksen**, ikke om retningen: `Geo.axisDelta`, ikke `Geo.headingDelta`. En veg er
+en linje, ikke en pil, og hvilken vei NVDB har digitalisert den har ingenting med kjøreretningen
+din å gjøre. Med retningsavvik ble EV18 forkastet med Δ173° fem meter unna, mens en kommunal veg
+femten meter unna vant med Δ27° - appen viste 40 der det var 50. `HeadingFilterTest` gjenskaper
+nøyaktig det oppsettet.
+
 **Hvorfor negativ cache:** `ensureTile` hoppet tidligere bare av hvis ruta var cachet eller
 underveis. Feilet kallet, var den ingen av dem - og neste GPS-fix prøvde igjen. I en tunnel med
 1 Hz ble det 60 forespørsler i minuttet mot et offentlig API. Nå får hver rute eksponentiell
