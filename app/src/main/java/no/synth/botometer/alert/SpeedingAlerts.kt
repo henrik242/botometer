@@ -27,41 +27,23 @@ import no.synth.botometer.fine.LicenceOutcome
  * «drive-critical, time sensitive, and actionable». Overgangen fra 4 800 til 7 450 kroner er det.
  * At du fortsatt ligger 17 over er det ikke.
  *
- * NB: hysterese mangler fortsatt, som README-en sier. [MIN_INTERVAL_MS] er en grovere kur mot
- * samme problem: ligger du og vipper på en trinngrense, får du ett varsel, ikke ti.
+ * Selve regelen for NÅR det varsles ligger i [AlertPolicy], uten Android rundt seg, slik at
+ * den kan testes for det den er.
  */
 class SpeedingAlerts(
     private val context: Context,
     private val now: () -> Long = System::currentTimeMillis,
 ) {
 
-    private var lastBand: String? = null
-    private var lastAlertAtMs = 0L
+    private val policy = AlertPolicy(now)
 
     fun onReading(reading: SpeedWatch.Reading) {
-        val band = bandOf(reading.estimate)
-
-        if (band == null) {
-            // Tilbake i lovlig fart, eller ukjent fartsgrense. Varselet skal ikke bli stående og
-            // påstå noe som ikke lenger gjelder.
-            if (lastBand != null) NotificationManagerCompat.from(context).cancel(NOTIFICATION_ID)
-            lastBand = null
-            return
+        when (val decision = policy.next(reading.estimate)) {
+            is AlertPolicy.Decision.Ignore -> Unit
+            is AlertPolicy.Decision.Withdraw ->
+                runCatching { NotificationManagerCompat.from(context).cancel(NOTIFICATION_ID) }
+            is AlertPolicy.Decision.Alert -> post(decision.estimate)
         }
-
-        if (band == lastBand) return
-        if (now() - lastAlertAtMs < MIN_INTERVAL_MS) return
-
-        lastBand = band
-        lastAlertAtMs = now()
-        post(reading.estimate)
-    }
-
-    /** null = ingenting å varsle om. Ellers en nøkkel som endrer seg når nivået endrer seg. */
-    private fun bandOf(estimate: FineEstimate): String? = when (estimate) {
-        is FineEstimate.NoOffence, is FineEstimate.UnknownLimit -> null
-        is FineEstimate.SimplifiedFine -> estimate.band
-        is FineEstimate.Prosecution -> "anmeldelse"
     }
 
     private fun post(estimate: FineEstimate) {
@@ -140,8 +122,5 @@ class SpeedingAlerts(
     companion object {
         private const val CHANNEL_ID = "speeding"
         private const val NOTIFICATION_ID = 2
-
-        /** Grovkornet vern mot maset ved en trinngrense, i påvente av ekte hysterese. */
-        private const val MIN_INTERVAL_MS = 20_000L
     }
 }
