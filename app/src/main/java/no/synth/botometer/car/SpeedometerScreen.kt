@@ -21,7 +21,8 @@ import kotlinx.coroutines.launch
 import no.synth.botometer.R
 import no.synth.botometer.alert.SpeedWatch
 import no.synth.botometer.speed.GpsSpeedSource
-import no.synth.botometer.speed.LocationForegroundService
+import no.synth.botometer.speed.Tracking
+import no.synth.botometer.speed.TrackingHolders
 
 /**
  * Bruker NavigationTemplate fordi det er den ENESTE templaten i Car App Library som gir tilgang
@@ -67,7 +68,7 @@ class SpeedometerScreen(carContext: CarContext) : Screen(carContext), DefaultLif
     }
 
     override fun onStop(owner: LifecycleOwner) {
-        stopTracking()
+        stopDrawing()
         // Må nullstilles, ellers tegner rendereren mot en død surface neste gang skjermen vises.
         carContext.getCarService(AppManager::class.java).setSurfaceCallback(null)
     }
@@ -75,7 +76,9 @@ class SpeedometerScreen(carContext: CarContext) : Screen(carContext), DefaultLif
     private fun startTracking() {
         if (!GpsSpeedSource.hasLocationPermission(carContext)) return
 
-        LocationForegroundService.start(carContext)
+        // Holderen er CAR fordi det er ØKTA som eier sporingen, ikke denne skjermen.
+        // [BotometerSession] slipper den igjen når økta dør.
+        Tracking.acquire(carContext, TrackingHolders.Holder.CAR)
 
         collectJob?.cancel()
         collectJob = lifecycleScope.launch {
@@ -83,11 +86,14 @@ class SpeedometerScreen(carContext: CarContext) : Screen(carContext), DefaultLif
         }
     }
 
-    private fun stopTracking() {
+    /**
+     * Bare tegningen stopper. Posisjonssporingen gjør det IKKE: verten stopper denne skjermen i
+     * det Google Maps tar over bilskjermen, og stoppet vi sporingen her, ville fartsvarslene dødd
+     * i samme øyeblikk som de ble den eneste flaten appen har igjen.
+     */
+    private fun stopDrawing() {
         collectJob?.cancel()
         collectJob = null
-        // Ingen grunn til å lese posisjon når speedometeret ikke vises.
-        LocationForegroundService.stop(carContext)
     }
 
     override fun onGetTemplate(): Template {
@@ -143,11 +149,12 @@ class SpeedometerScreen(carContext: CarContext) : Screen(carContext), DefaultLif
      * foreground-servicen videre - appen leser posisjon, og det vedvarende varselet står, uten at
      * noe på skjermen forklarer hvorfor. En app som leser GPS må kunne skrus av der den vises.
      *
-     * [stopTracking] først: `finish()` river skjermen, og da er det ikke lenger opplagt at
-     * livssyklusen rekker å rydde etter oss.
+     * [Tracking.stopAll] og ikke bare et slipp av vår egen holder: trykker du «Avslutt», mener
+     * du slutt - også om telefonskjermen står og holder på sporingen et sted.
      */
     private fun exit() {
-        stopTracking()
+        stopDrawing()
+        Tracking.stopAll()
         finish()
     }
 

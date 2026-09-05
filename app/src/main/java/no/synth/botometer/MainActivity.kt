@@ -14,6 +14,7 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.app.NotificationManagerCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.lifecycleScope
@@ -152,6 +153,15 @@ class MainActivity : ComponentActivity() {
                 appendLine("  tillatelsesdialogen, bare på innstillingssiden.")
             } else {
                 appendLine("Bakgrunn: gitt")
+            }
+            // Er varsler av, er fartsvarslene borte uten en eneste feilmelding: appen poster dem
+            // som før, og systemet kaster dem. Det er nøyaktig samme symptom som en app som ikke
+            // varsler i det hele tatt, og eneste stedet det kan oppdages er her.
+            if (!NotificationManagerCompat.from(this@MainActivity).areNotificationsEnabled()) {
+                appendLine("Varsler: AV - fartsvarslene vises ingen steder, heller ikke i bilen")
+                appendLine("  Slå dem på under «${getString(R.string.always_allow_location)}».")
+            } else {
+                appendLine("Varsler: på")
             }
             appendLine()
 
