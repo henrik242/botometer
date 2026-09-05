@@ -14,6 +14,7 @@ object Diagnostics {
     private val lastNvdbError = AtomicReference<String?>(null)
     private val lastTileInfo = AtomicReference<String?>(null)
     private val lastMatchInfo = AtomicReference<String?>(null)
+    private val lastMissInfo = AtomicReference<String?>(null)
     private val nvdbRequests = AtomicLong(0)
     private val nvdbFailures = AtomicLong(0)
 
@@ -28,6 +29,21 @@ object Diagnostics {
         lastNvdbError.set("$key: $message" + if (permanent) " [permanent]" else "")
     }
 
+    /**
+     * Et bom er like mye informasjon som et treff, og uten det står brukeren igjen med «ingen
+     * treff ennå» - som ikke skiller mellom «ruta er tom», «nærmeste veg er 80 meter unna» og
+     * «kursfilteret forkastet riktig segment».
+     */
+    fun missed(segments: Int, nearestMeters: Double, rejectedByHeading: Boolean) {
+        lastMissInfo.set(
+            buildString {
+                append("ingen treff blant $segments segmenter")
+                if (nearestMeters.isFinite()) append(", nærmeste ${"%.0f".format(nearestMeters)} m")
+                if (rejectedByHeading) append(", forkastet av kursfilteret")
+            }
+        )
+    }
+
     fun matched(limitKmt: Int, distanceMeters: Double, roadRef: String?) {
         lastMatchInfo.set("$limitKmt km/t, ${"%.1f".format(distanceMeters)} m unna" + (roadRef?.let { " · $it" } ?: ""))
     }
@@ -36,6 +52,7 @@ object Diagnostics {
         appendLine("NVDB-kall: ${nvdbRequests.get()} (${nvdbFailures.get()} feilet)")
         appendLine("Siste rute: ${lastTileInfo.get() ?: "ingen ennå"}")
         appendLine("Siste treff: ${lastMatchInfo.get() ?: "ingen ennå"}")
+        appendLine("Siste bom: ${lastMissInfo.get() ?: "ingen"}")
         appendLine("Siste feil: ${lastNvdbError.get() ?: "ingen"}")
     }
 }
