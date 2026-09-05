@@ -49,6 +49,14 @@ class MainActivity : ComponentActivity() {
             setOnClickListener { refreshRates(this) }
         }
 
+        val clearCrash = Button(this).apply {
+            text = getString(R.string.clear_crash_log)
+            setOnClickListener {
+                CrashLog.clear(this@MainActivity)
+                render()
+            }
+        }
+
         val speedometer = Button(this).apply {
             text = getString(R.string.open_phone_speedometer)
             setOnClickListener {
@@ -64,6 +72,7 @@ class MainActivity : ComponentActivity() {
         val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             addView(status)
+            addView(clearCrash)
             addView(speedometer)
             addView(refresh)
             addView(permissions)
@@ -100,6 +109,13 @@ class MainActivity : ComponentActivity() {
             appendLine("Botometer ${BuildConfig.VERSION_NAME}")
             appendLine("versionCode ${BuildConfig.VERSION_CODE}")
             appendLine()
+
+            // Øverst, ikke nederst: har appen krasjet, er det det viktigste på skjermen.
+            CrashLog.read(this@MainActivity)?.let { crash ->
+                appendLine("⚠ SISTE KRASJ")
+                appendLine(crash.take(CrashLog.MAX_SHOWN))
+                appendLine()
+            }
 
             appendLine("ANDROID AUTO")
             append(CarSetupDiagnostics.summary(this@MainActivity))
