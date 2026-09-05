@@ -151,12 +151,17 @@ GET https://nvdbapiles.atlas.vegvesen.no/vegobjekter/api/v4/vegobjekter/105
   &srid=4326
   &inkluder=egenskaper,geometri,lokasjon
   &segmentering=true
-  &sortering=false&inkluderAntall=false
+  &inkluderAntall=false
 X-Client: botometer-android
 ```
 
-Åpent, ingen nøkkel, men `X-Client` er påkrevd av Vegvesenet — uten den risikerer du struping.
+Åpent, ingen nøkkel, men `X-Client` er påkrevd av Vegvesenet - uten den risikerer du struping.
 Sett din egen verdi i `res/values/strings.xml`.
+
+**v4 avviser ukjente parametre** med `400 Ugyldig forespørsel` i stedet for å ignorere dem. Kallet
+bar lenge med seg `sortering=false` fra v3, og da feilet hvert eneste oppslag - permanent, siden
+en 400 med rette ikke prøves på nytt. Slå opp nye parametre i v4-dokumentasjonen før du legger dem
+til; `NvdbClientErrorTest` låser settet så en utvidelse må gjøres bevisst.
 
 ## Arkitektur
 
