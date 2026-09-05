@@ -16,8 +16,21 @@ object Diagnostics {
     private val lastMatchInfo = AtomicReference<String?>(null)
     private val lastMissInfo = AtomicReference<String?>(null)
     private val lastCandidates = AtomicReference<String?>(null)
+    private val locationServiceError = AtomicReference<String?>(null)
     private val nvdbRequests = AtomicLong(0)
     private val nvdbFailures = AtomicLong(0)
+
+    /**
+     * Posisjonssporingen kan nektes uten at brukeren merker noe annet enn at farten står stille.
+     * Da må appen si hva som skjedde, og hva som fikser det.
+     */
+    fun locationServiceFailed(message: String) {
+        locationServiceError.set(message)
+    }
+
+    fun locationServiceStarted() {
+        locationServiceError.set(null)
+    }
 
     fun tileLoaded(segments: Int, complete: Boolean, key: String) {
         nvdbRequests.incrementAndGet()
@@ -58,6 +71,15 @@ object Diagnostics {
     }
 
     fun summary(): String = buildString {
+        locationServiceError.get()?.let {
+            appendLine("⚠ POSISJONSSPORING STOPPET")
+            appendLine("  $it")
+            appendLine("  Posisjonstilgangen er «mens appen er i bruk». Fra Android 14 får en app")
+            appendLine("  med den tilgangen bare starte posisjonssporing mens den selv er i")
+            appendLine("  forgrunnen - og bilskjermen teller ikke. Se README: appen må enten")
+            appendLine("  startes fra telefonen først, eller be om «Tillat alltid».")
+            appendLine()
+        }
         appendLine("NVDB-kall: ${nvdbRequests.get()} (${nvdbFailures.get()} feilet)")
         appendLine("Siste rute: ${lastTileInfo.get() ?: "ingen ennå"}")
         appendLine("Siste treff: ${lastMatchInfo.get() ?: "ingen ennå"}")

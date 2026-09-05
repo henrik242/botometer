@@ -19,6 +19,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
+import no.synth.botometer.Diagnostics
 import no.synth.botometer.MainActivity
 import no.synth.botometer.alert.SpeedWatch
 import no.synth.botometer.alert.SpeedingAlerts
@@ -49,14 +50,35 @@ class LocationForegroundService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        ServiceCompat.startForeground(
-            this,
-            NOTIFICATION_ID,
-            buildNotification(),
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
-            } else 0,
-        )
+        // startForeground kan nekte, og gjør det som en SecurityException som tar hele appen med
+        // seg. Fra Android 14 krever en location-tjeneste at appen er i en «eligible state»: er
+        // posisjonstilgangen gitt som «mens appen er i bruk», er den en forgrunnstillatelse, og
+        // da holder det ikke å ha den - appen må også være i forgrunnen i det øyeblikket.
+        //
+        // Bilskjermen er ikke det. Appen på telefonen er i bakgrunnen mens speedometeret vises i
+        // bilen, og da faller starten igjennom.
+        //
+        // Et krasj er uansett feil svar. Tjenesten som ikke fikk lov skal legge seg ned og si
+        // hvorfor, så telefon-appen kan vise det.
+        val startedForeground = runCatching {
+            ServiceCompat.startForeground(
+                this,
+                NOTIFICATION_ID,
+                buildNotification(),
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
+                } else 0,
+            )
+        }.onFailure { e ->
+            Log.e(TAG, "Fikk ikke starte posisjonssporing: ${e.message}")
+            Diagnostics.locationServiceFailed(e.message ?: e.javaClass.simpleName)
+        }.isSuccess
+
+        if (!startedForeground) {
+            stopSelf()
+            return START_NOT_STICKY
+        }
+        Diagnostics.locationServiceStarted()
 
         if (job == null) {
             job = scope.launch {
@@ -122,12 +144,21 @@ class LocationForegroundService : Service() {
         private const val CHANNEL_ID = "location"
         private const val NOTIFICATION_ID = 1
 
+        /**
+         * Selve starten kan også nektes, med ForegroundServiceStartNotAllowedException, før
+         * tjenesten i det hele tatt kjører. Samme resonnement: si fra, ikke krasj.
+         */
         fun start(context: Context) {
             val intent = Intent(context, LocationForegroundService::class.java)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                context.startForegroundService(intent)
-            } else {
-                context.startService(intent)
+            runCatching {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    context.startForegroundService(intent)
+                } else {
+                    context.startService(intent)
+                }
+            }.onFailure {
+                Log.e(TAG, "Fikk ikke be om posisjonssporing: ${it.message}")
+                Diagnostics.locationServiceFailed(it.message ?: it.javaClass.simpleName)
             }
         }
 
