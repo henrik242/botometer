@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import androidx.car.app.notification.CarAppExtender
+import androidx.car.app.notification.CarNotificationManager
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import no.synth.botometer.Diagnostics
@@ -42,7 +43,7 @@ class SpeedingAlerts(
         when (val decision = policy.next(reading.estimate)) {
             is AlertPolicy.Decision.Ignore -> Unit
             is AlertPolicy.Decision.Withdraw ->
-                runCatching { NotificationManagerCompat.from(context).cancel(NOTIFICATION_ID) }
+                runCatching { CarNotificationManager.from(context).cancel(NOTIFICATION_ID) }
             is AlertPolicy.Decision.Alert -> post(decision.estimate)
         }
     }
@@ -87,7 +88,20 @@ class SpeedingAlerts(
             .setContentTitle(title)
             .setContentText(text)
             .setContentIntent(open)
-            .setCategory(NotificationCompat.CATEGORY_NAVIGATION)
+            // INGEN CATEGORY_NAVIGATION. Den er grunnen til at varselet aldri kom fram i bilen.
+            //
+            // Verten behandler et navigasjonsvarsel fra en navigasjonsapp som en sving-for-sving-
+            // melding, og de har en egen regel: «will not be displayed if the navigation app is
+            // not the currently active navigation app, or if the app is already displaying
+            // routing information in the navigation template».
+            //
+            // Botometer er alltid i én av de to tilstandene. Eier Maps skjermen, er vi ikke den
+            // aktive navigasjonsappen. Eier vi skjermen, tegner vi i NavigationTemplate. Begge
+            // grenene undertrykker varselet, så det kunne aldri vises - mens telefonen viste det
+            // hver gang, siden regelen er vertens og ikke systemets.
+            //
+            // Dette er ikke et sving-for-sving-varsel. Det skal vises nettopp når vi IKKE eier
+            // skjermen, og da skal det ikke utgi seg for å være noe annet.
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setOnlyAlertOnce(false)
             .setAutoCancel(true)
@@ -98,15 +112,26 @@ class SpeedingAlerts(
                     .setContentTitle(title)
                     .setContentText(text)
                     .setSmallIcon(R.drawable.ic_stat_speed)
+                    // Bilskjermens egen viktighet, uavhengig av kanalen på telefonen. Uten den
+                    // arves kanalens, og da er det én ting til som kan være årsaken uten å si fra.
+                    .setImportance(NotificationManagerCompat.IMPORTANCE_HIGH)
                     .build()
             )
-            .build()
 
+        // CarNotificationManager, ikke NotificationManagerCompat. Dokumentasjonen til
+        // CarAppExtender sier det rett ut: «Post the notification with the
+        // CarNotificationManager.notify(...) methods. Do not use the NotificationManager.notify
+        // (...), nor the NotificationManagerCompat.notify(...) methods.»
+        //
+        // På projisert Android Auto gjør de to i praksis det samme når varselet allerede er
+        // utvidet, så dette alene var ikke feilen - men på Automotive OS er det det som gjør at
+        // varselet i det hele tatt havner riktig, og det er den dokumenterte veien.
+        //
         // Varselstillatelsen er brukerens; mangler den, skal ingenting krasje. Men feilen skal
         // ikke forsvinne heller: et varsel som ble kastet i stillhet ser ut som et varsel som
         // ble sendt, og da leter du etter feilen alle andre steder enn der den er.
         runCatching {
-            NotificationManagerCompat.from(context).notify(id, notification)
+            CarNotificationManager.from(context).notify(id, notification)
         }.onSuccess {
             Diagnostics.alertPosted(title, text, Diagnostics.carSessionIsActive)
         }.onFailure {
@@ -125,6 +150,16 @@ class SpeedingAlerts(
             NotificationManager.IMPORTANCE_HIGH,
         )
         context.getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
+    }
+
+    /**
+     * Samme varsel som en ekte overtredelse, sendt på kommando.
+     *
+     * Uten dette krevde hver runde med feilsøking at noen kjørte for fort med bilen tilkoblet,
+     * og så husket hva som skjedde. Nå er det ett trykk fra førersetet med tenningen på.
+     */
+    fun sendTestAlert() {
+        notify(NOTIFICATION_ID, "${nok(1250)} kr", "1 km/t over · testvarsel")
     }
 
     private fun nok(amount: Int) = amount.toString()
