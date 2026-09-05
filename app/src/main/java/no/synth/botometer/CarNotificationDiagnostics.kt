@@ -66,8 +66,14 @@ object CarNotificationDiagnostics {
             appendLine("  nytt hjelper ikke. Sett den til «Høy»/«Vis på skjermen» i appens")
             appendLine("  varselinnstillinger, eller avinstaller og installer på nytt.")
         }
-        if (!channel.canBypassDnd() && importance >= NotificationManager.IMPORTANCE_HIGH) {
-            appendLine("  (kanalen slipper ikke gjennom «Ikke forstyrr» - sjekk kjøremodus)")
+        // Bare når «Ikke forstyrr» FAKTISK er på. canBypassDnd() er false for nesten alle
+        // kanaler i alle apper, så en advarsel på den alene peker på et ikke-problem hos
+        // absolutt alle - og en diagnostikk full av røde sild er verdiløs.
+        val dndOn = runCatching { manager?.currentInterruptionFilter }.getOrNull()
+            ?.let { it != NotificationManager.INTERRUPTION_FILTER_ALL && it != NotificationManager.INTERRUPTION_FILTER_UNKNOWN }
+            ?: false
+        if (dndOn && !channel.canBypassDnd()) {
+            appendLine("✗ «Ikke forstyrr» er på, og kanalen slipper ikke gjennom")
         }
     }
 
