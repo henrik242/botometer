@@ -287,6 +287,36 @@ Rekkefølgen på sjekkene er svarene sortert etter hvor ofte de er årsaken:
 Gearhead logger hvorfor den forkaster en app - feil kategori, for høy `minCarApiLevel`, feilet
 vertsvalidering. **Den loggen er svaret; den slår enhver hypotese i dette dokumentet.**
 
+## Tre flater, og hvorfor det ikke er én
+
+Bilverten kjører **én navigasjonsapp om gangen**. Starter Google Maps, kaller verten
+`onStopNavigation` på oss. Car App Library har heller ingen liten sideflate å be om -
+`NavigationTemplate` er fullskjerm, og panelet ved siden av Maps er vertens eget, forbeholdt
+media og meldinger. Botometer kan altså eie bilskjermen, eller Maps kan. Ikke begge.
+
+Derfor finnes appen på tre flater i stedet:
+
+| Flate | Når | Hva den gir |
+|---|---|---|
+| **Bilskjermen** | Botometer er valgt i bilen | Speedometeret, tegnet på `NavigationTemplate` |
+| **Telefonen** | Maps eier bilskjermen | Samme tall, stor skrift, skjermen holdes våken |
+| **Varsel** | Alltid, i bakgrunnen | Heads-up når farten krysser inn i et nytt bøtenivå |
+
+`LocationForegroundService` eier GPS-abonnementet og lever videre når Maps overtar skjermen, så
+varslene virker uansett hvem som eier bilskjermen. Varselet er `IMPORTANCE_HIGH` og utvidet med
+`CarAppExtender` - uten den vises ingen varsler på bilskjermen i det hele tatt.
+
+**Varselet kommer bare ved overgang til et nytt nivå.** Et varsel per GPS-fix er ikke et varsel,
+det er støy, og Google er tydelig på at heads-up er forbeholdt noe «drive-critical, time
+sensitive, and actionable». At beløpet nettopp gikk fra 4 800 til 7 450 kroner er det. At du
+fortsatt ligger 17 over er det ikke. Hysteresen som mangler (se «Kjente svakheter») er grovt
+kompensert med et minste intervall mellom varsler, så en vipping på trinngrensa gir ett varsel
+og ikke ti.
+
+De tre flatene deler ett `SpeedLimitRepository`, opprettet i `BotometerApp`. Rute-cachen ligger i
+instansen, så tre repoer ville betydd tre cacher og tre ganger så mange kall mot NVDB for de
+samme rutene.
+
 ## Personvern
 
 Posisjonen forlater aldri telefonen: NVDB-kallet sender en bbox på ~2 km, ikke et punkt. Det er en

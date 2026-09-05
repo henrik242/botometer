@@ -78,6 +78,14 @@
             android:exported="false"
             android:foregroundServiceType="location" />
 
+        <!-- Speedometeret på telefonen, til bruk mens Maps eier bilskjermen. Ikke exported:
+             ingen andre apper har noe her å gjøre. -->
+        <activity
+            android:name=".PhoneSpeedometerActivity"
+            android:exported="false"
+            android:label="@string/phone_speedometer_title"
+            android:screenOrientation="fullSensor" />
+
         <activity
             android:name=".MainActivity"
             android:exported="true">
