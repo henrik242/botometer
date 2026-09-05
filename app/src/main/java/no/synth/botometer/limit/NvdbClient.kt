@@ -151,7 +151,7 @@ class NvdbClient(
 
         val root = json.parseToJsonElement(body).jsonObject
         val objekter = root["objekter"]?.jsonArray.orEmpty()
-        val segments = objekter.mapNotNull { parseSegment(it.jsonObject) }
+        val segments = objekter.flatMap { parseSegments(it.jsonObject) }
 
         // Vi følger `start`-tokenet, ikke `neste.href`. Href-en i responsen har historisk pekt
         // på gamle stier (uten /api/v4/), så det er tryggere å bygge URL-en selv.
@@ -162,25 +162,38 @@ class NvdbClient(
         return Page(segments, next, objekter.size)
     }
 
-    private fun parseSegment(obj: JsonObject): SpeedLimitSegment? {
-        val id = obj["id"]?.jsonPrimitive?.longOrNullSafe() ?: return null
+    /**
+     * Ett [SpeedLimitSegment] per sammenhengende linjestykke, ikke ett per vegobjekt.
+     *
+     * Et vegobjekt kan ha MULTILINESTRING-geometri: flere adskilte strekninger med samme
+     * fartsgrense. Tidligere ble de slått sammen med `flatten()` til én punktliste, og
+     * kart-matchingen - som binder sammen punkt i og i+1 - trakk da en rett linje fra enden av
+     * én strekning til starten av den neste. Den linja finnes ikke i virkeligheten, men den er
+     * like matchbar som en ekte veg.
+     *
+     * Effekten var systematisk og gikk alltid samme vei: en 30- eller 50-sone i et tettsted
+     * består av mange korte, adskilte strekninger, mens en 70- eller 80-veg er én lang. Byens
+     * fantomlinjer spente derfor på kryss og tvers over hovedvegen, og lot en lav grense vinne
+     * på avstand mot den riktige høye.
+     */
+    private fun parseSegments(obj: JsonObject): List<SpeedLimitSegment> {
+        val id = obj["id"]?.jsonPrimitive?.longOrNullSafe() ?: return emptyList()
 
         val limit = obj["egenskaper"]?.jsonArray.orEmpty()
             .map { it.jsonObject }
             .firstOrNull { it["id"]?.jsonPrimitive?.intOrNullSafe() == EGENSKAP_FARTSGRENSE }
             ?.get("verdi")?.jsonPrimitive?.intOrNullSafe()
-            ?: return null
+            ?: return emptyList()
 
-        val wkt = obj["geometri"]?.jsonObject?.get("wkt")?.jsonPrimitive?.contentOrNull ?: return null
+        val wkt = obj["geometri"]?.jsonObject?.get("wkt")?.jsonPrimitive?.contentOrNull
+            ?: return emptyList()
         val lines = Wkt.parseLines(wkt)
-        if (lines.isEmpty()) return null
 
         val roadRef = obj["lokasjon"]?.jsonObject
             ?.get("vegsystemreferanser")?.jsonArray?.firstOrNull()
             ?.jsonObject?.get("kortform")?.jsonPrimitive?.contentOrNull
 
-        // Flat ut multilinestring; hvert delstykke matches uansett punktvis.
-        return SpeedLimitSegment(id, limit, lines.flatten(), roadRef)
+        return lines.map { SpeedLimitSegment(id, limit, it, roadRef) }
     }
 
     companion object {

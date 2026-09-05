@@ -15,6 +15,7 @@ object Diagnostics {
     private val lastTileInfo = AtomicReference<String?>(null)
     private val lastMatchInfo = AtomicReference<String?>(null)
     private val lastMissInfo = AtomicReference<String?>(null)
+    private val lastCandidates = AtomicReference<String?>(null)
     private val nvdbRequests = AtomicLong(0)
     private val nvdbFailures = AtomicLong(0)
 
@@ -44,6 +45,14 @@ object Diagnostics {
         )
     }
 
+    /**
+     * Vinneren alene sier ikke hvorfor den vant. Plukker appen 30 der det er 80, er spørsmålet
+     * hva 80-vegen lå på av avstand og kursavvik - og det svaret finnes bare her.
+     */
+    fun candidates(lines: List<String>) {
+        lastCandidates.set(lines.takeIf { it.isNotEmpty() }?.joinToString("\n  "))
+    }
+
     fun matched(limitKmt: Int, distanceMeters: Double, roadRef: String?) {
         lastMatchInfo.set("$limitKmt km/t, ${"%.1f".format(distanceMeters)} m unna" + (roadRef?.let { " · $it" } ?: ""))
     }
@@ -53,6 +62,8 @@ object Diagnostics {
         appendLine("Siste rute: ${lastTileInfo.get() ?: "ingen ennå"}")
         appendLine("Siste treff: ${lastMatchInfo.get() ?: "ingen ennå"}")
         appendLine("Siste bom: ${lastMissInfo.get() ?: "ingen"}")
+        appendLine("Kandidater:")
+        appendLine("  ${lastCandidates.get() ?: "ingen ennå"}")
         appendLine("Siste feil: ${lastNvdbError.get() ?: "ingen"}")
     }
 }

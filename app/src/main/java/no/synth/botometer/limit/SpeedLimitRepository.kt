@@ -69,10 +69,21 @@ class SpeedLimitRepository(
         var nearestMeters = Double.POSITIVE_INFINITY
         var rejectedByHeading = false
 
+        // Kandidatlista tar med det matchingen forkastet. Uten den ser et feil treff ut som en
+        // gåte: du vet at 30 er galt, men ikke hva 80-vegen lå på av avstand og kursavvik.
+        val nearby = ArrayList<Triple<SpeedLimitSegment, Double, Double?>>()
+
         for (seg in segments) {
+            var segNearest = Double.POSITIVE_INFINITY
+            var segBearing = 0.0
+
             for (i in 0 until seg.line.size - 1) {
                 val hit = Geo.distanceToSegment(plane, position, seg.line[i], seg.line[i + 1])
                 if (hit.distanceMeters < nearestMeters) nearestMeters = hit.distanceMeters
+                if (hit.distanceMeters < segNearest) {
+                    segNearest = hit.distanceMeters
+                    segBearing = hit.bearingDeg
+                }
                 if (hit.distanceMeters > maxMatchDistanceMeters) continue
 
                 // Kursfilter: uten det plukker vi lett en parallell veg eller en avkjøring med
@@ -91,7 +102,26 @@ class SpeedLimitRepository(
                     best = LimitMatch(seg.limitKmt, seg.roadRef, hit.distanceMeters)
                 }
             }
+
+            if (segNearest <= DIAGNOSTIC_RADIUS_METERS) {
+                nearby += Triple(
+                    seg,
+                    segNearest,
+                    headingDeg?.let { Geo.headingDelta(it, segBearing) },
+                )
+            }
         }
+
+        Diagnostics.candidates(
+            nearby.sortedBy { it.second }.take(MAX_CANDIDATES).map { (seg, meters, delta) ->
+                buildString {
+                    append("${seg.limitKmt} km/t")
+                    append(" · ${"%.0f".format(meters)} m")
+                    if (delta != null) append(" · Δ${"%.0f".format(delta)}°")
+                    seg.roadRef?.let { append(" · $it") }
+                }
+            }
+        )
 
         if (best != null) {
             lastGood = best
@@ -195,5 +225,9 @@ class SpeedLimitRepository(
         const val BASE_BACKOFF_MS = 2_000L
         const val MAX_BACKOFF_MS = 5 * 60_000L
         const val MAX_FAILURE_ENTRIES = 128
+
+        /** Videre enn matchevinduet med vilje: vi vil se hva som ble forkastet, ikke bare hva som vant. */
+        const val DIAGNOSTIC_RADIUS_METERS = 80.0
+        const val MAX_CANDIDATES = 4
     }
 }

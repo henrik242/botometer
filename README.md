@@ -205,6 +205,12 @@ grenseland. Fradraget ligger i `Tolerance` i satsfilen, ikke i koden.
 
 Etter review-runden står følgende igjen som uløst. Det viktigste først:
 
+- **Fantomlinjer mellom delstrekninger er rettet**, men beslektede feil er lette å lage igjen:
+  et vegobjekt med MULTILINESTRING-geometri er flere adskilte strekninger, og limes de sammen til
+  én punktliste, får matchingen en rett linje mellom dem som ikke finnes i virkeligheten. Effekten
+  var systematisk - 30-soner i tettsteder er mange korte strekninger, 80-veger er én lang - så
+  fantomlinjene spente over hovedvegen og lot lav grense vinne. `MultiLineSegmentTest` holder det
+  ute. Diagnostikken viser nå også kandidatene matchingen forkastet, ikke bare vinneren.
 - **Hysterese mangler**, både på trinnvalg og segmentvalg. Beløpet vil flimre rundt en trinngrense,
   og fartsgrensen kan hoppe mellom to nesten like gode segmenter i kryss. Dette er det neste som
   bør fikses - det er tallet som trekker blikket.
