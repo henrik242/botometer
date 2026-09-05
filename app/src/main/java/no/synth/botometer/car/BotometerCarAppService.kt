@@ -9,6 +9,7 @@ import androidx.car.app.validation.HostValidator
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import no.synth.botometer.BuildConfig
+import no.synth.botometer.Diagnostics
 import no.synth.botometer.speed.Tracking
 import no.synth.botometer.speed.TrackingHolders
 
@@ -52,7 +53,12 @@ class BotometerSession : Session(), DefaultLifecycleObserver {
 
     override fun onCreateScreen(intent: Intent): Screen = SpeedometerScreen(carContext)
 
+    override fun onCreate(owner: LifecycleOwner) {
+        Diagnostics.carSessionCreated()
+    }
+
     override fun onDestroy(owner: LifecycleOwner) {
+        Diagnostics.carSessionDestroyed()
         Tracking.release(TrackingHolders.Holder.CAR)
     }
 }

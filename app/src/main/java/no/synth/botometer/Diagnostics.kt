@@ -22,6 +22,13 @@ object Diagnostics {
     private val nvdbRequests = AtomicLong(0)
     private val nvdbFailures = AtomicLong(0)
 
+    private val alertsPosted = AtomicLong(0)
+    private val alertsFailed = AtomicLong(0)
+    private val lastAlert = AtomicReference<String?>(null)
+    private val lastAlertError = AtomicReference<String?>(null)
+    private val carSession = AtomicReference<String?>(null)
+    private val carSessionActive = java.util.concurrent.atomic.AtomicBoolean(false)
+
     /**
      * Posisjonssporingen kan nektes uten at brukeren merker noe annet enn at farten står stille.
      * Da må appen si hva som skjedde, og hva som fikser det.
@@ -102,6 +109,55 @@ object Diagnostics {
     fun poorAccuracy(meters: Double) {
         lastAccuracyInfo.set("hoppet over matching: GPS ±${"%.0f".format(meters)} m")
     }
+
+    /**
+     * Bilverten viser bare varsler for en app som faktisk kjører i bilen. Var økta død da
+     * varselet ble postet, er det hele forklaringen - og det er ikke synlig noe annet sted.
+     */
+    fun carSessionCreated() {
+        carSessionActive.set(true)
+        carSession.set("opprettet ${klokke()}")
+    }
+
+    fun carSessionDestroyed() {
+        carSessionActive.set(false)
+        carSession.set("avsluttet ${klokke()}")
+    }
+
+    val carSessionIsActive: Boolean get() = carSessionActive.get()
+
+    fun carSessionLine(): String =
+        if (carSessionActive.get()) "✓ Bil-økt: aktiv (${carSession.get()})"
+        else "✗ Bil-økt: ikke aktiv" + (carSession.get()?.let { " (sist $it)" } ?: " (aldri startet)")
+
+    /**
+     * @param carActive om bil-økta var i live i det varselet ble postet. Det er nettopp den
+     * kombinasjonen som avgjør om verten hadde noen mulighet til å vise det.
+     */
+    fun alertPosted(title: String, text: String, carActive: Boolean) {
+        alertsPosted.incrementAndGet()
+        lastAlert.set(
+            "«$title · $text» ${klokke()}" + if (carActive) " (bil-økt aktiv)" else " (INGEN bil-økt)"
+        )
+    }
+
+    /**
+     * Posteringen var pakket i runCatching og forsvant i stillhet. En feil ingen ser er verre
+     * enn en feil - da ser det ut som om varselet ble sendt.
+     */
+    fun alertFailed(message: String) {
+        alertsFailed.incrementAndGet()
+        lastAlertError.set("$message ${klokke()}")
+    }
+
+    fun alertLines(): String = buildString {
+        appendLine("· Varsler sendt: ${alertsPosted.get()} (${alertsFailed.get()} feilet)")
+        appendLine("· Siste varsel: ${lastAlert.get() ?: "ingen ennå"}")
+        lastAlertError.get()?.let { appendLine("✗ Siste varselfeil: $it") }
+    }
+
+    private fun klokke(): String =
+        java.time.LocalTime.now().withNano(0).toString()
 
     fun summary(): String = buildString {
         locationServiceError.get()?.let {

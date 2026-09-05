@@ -441,9 +441,28 @@ før, så tilbake-knappen der fortsatt slår av GPS-en når telefonen er den ene
 men den slår den ikke lenger av for bilen. `TrackingHolders` er tellingen alene, uten Android
 rundt seg, og `TrackingHoldersTest` låser den.
 
-Blir varslene likevel borte, er neste sted å se telefon-appen: er varsler slått av for appen,
-kastes de av systemet uten en eneste feilmelding, og det ser ut nøyaktig som en app som ikke
-varsler. «TILGANGER» sier fra om det.
+**Dukker varselet opp på telefonen, men ikke i bilen,** er det en helt annen feil - da er
+varselet postet og ikke blokkert, og appen har gjort jobben sin. Det som gjenstår er tingene
+bilverten ser på og telefonen ikke gjør, og ingen av dem sier fra når de er årsaken.
+`CarNotificationDiagnostics` leser dem ut i seksjonen «FARTSVARSLER I BILEN» i telefon-appen:
+
+- **Kanalens faktiske viktighet.** Den viktigste, og den mest bedragerske: viktighet kan bare
+  SENKES av en app, aldri heves. Er kanalen `speeding` først opprettet lavere - eller senket av
+  brukeren, eller av systemet fordi varslene ble avvist ofte nok - hjelper det ingenting at
+  `createChannel` ber om `IMPORTANCE_HIGH`. Forespørselen ignoreres. Under HIGH blir det ingen
+  heads-up, verten viser ingenting, og telefonen viser varselet i skyggen likevel, så det ser ut
+  som om alt virker.
+- **Bilforbindelsen**, lest med `CarConnection`. Det krever en `<provider>`-oppføring under
+  `<queries>` i manifestet; uten den er provideren usynlig fra Android 11 og `CarConnection`
+  svarer «ikke tilkoblet» ALLTID - en diagnostikk som lyver i akkurat den retningen som betyr noe.
+- **Om bil-økta var i live da varselet ble postet.** Verten viser bare varsler for en app som
+  faktisk kjører i bilen. Ble varselet postet uten en økt, er det hele forklaringen.
+- **Om posteringen feilet.** Den lå i `runCatching` og forsvant i stillhet; en feil ingen ser er
+  verre enn en feil, for da leter du alle andre steder enn der den er.
+
+Knappen **«Kopier diagnostikk»** legger hele rapporten på utklippstavla. Teksten har alltid vært
+selectable, men å markere fem skjermhøyder med diagnostikk på en telefon er en øvelse ingen orker
+å gjøre riktig.
 
 **Varselet kommer bare ved overgang til et nytt nivå.** Et varsel per GPS-fix er ikke et varsel,
 det er støy, og Google er tydelig på at heads-up er forbeholdt noe «drive-critical, time

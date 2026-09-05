@@ -1,6 +1,8 @@
 package no.synth.botometer
 
 import android.Manifest
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
@@ -14,6 +16,7 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.car.app.connection.CarConnection
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
@@ -33,6 +36,13 @@ class MainActivity : ComponentActivity() {
     private lateinit var tables: FineTableRepository
     private lateinit var status: TextView
 
+    /**
+     * Leses asynkront fra Android Auto. null til første svar kommer - og det skillet er verdt å
+     * vise: «ikke lest ennå» og «ikke tilkoblet» er to helt forskjellige svar på hvorfor
+     * bilskjermen ikke viser noe.
+     */
+    private var carConnectionType: Int? = null
+
     private val requestPermissions = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { render() }
@@ -50,6 +60,14 @@ class MainActivity : ComponentActivity() {
         val refresh = Button(this).apply {
             text = getString(R.string.refresh_rates)
             setOnClickListener { refreshRates(this) }
+        }
+
+        // Teksten er selectable, men å markere fem skjermhøyder med diagnostikk på en telefon
+        // er en øvelse ingen orker å gjøre riktig. Én knapp, hele rapporten, klar til å limes
+        // inn i en issue.
+        val copy = Button(this).apply {
+            text = getString(R.string.copy_diagnostics)
+            setOnClickListener { copyDiagnostics() }
         }
 
         val alwaysAllow = Button(this).apply {
@@ -80,6 +98,7 @@ class MainActivity : ComponentActivity() {
         val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             addView(status)
+            addView(copy)
             addView(alwaysAllow)
             addView(clearCrash)
             addView(speedometer)
@@ -100,6 +119,15 @@ class MainActivity : ComponentActivity() {
         }
 
         setContentView(ScrollView(this).apply { addView(content) })
+
+        // Sier om telefonen i det hele tatt tror den er koblet til en bil. Er den ikke det,
+        // vises et fartsvarsel bare på telefonen - og det er hele forklaringen.
+        runCatching {
+            CarConnection(this).type.observe(this) { type ->
+                carConnectionType = type
+                render()
+            }
+        }
 
         askPermissions()
         refreshIfStale()
@@ -154,15 +182,13 @@ class MainActivity : ComponentActivity() {
             } else {
                 appendLine("Bakgrunn: gitt")
             }
-            // Er varsler av, er fartsvarslene borte uten en eneste feilmelding: appen poster dem
-            // som før, og systemet kaster dem. Det er nøyaktig samme symptom som en app som ikke
-            // varsler i det hele tatt, og eneste stedet det kan oppdages er her.
-            if (!NotificationManagerCompat.from(this@MainActivity).areNotificationsEnabled()) {
-                appendLine("Varsler: AV - fartsvarslene vises ingen steder, heller ikke i bilen")
-                appendLine("  Slå dem på under «${getString(R.string.always_allow_location)}».")
-            } else {
-                appendLine("Varsler: på")
-            }
+            appendLine("Varsler: " +
+                if (NotificationManagerCompat.from(this@MainActivity).areNotificationsEnabled()) "gitt"
+                else "MANGLER - se «FARTSVARSLER I BILEN» under")
+            appendLine()
+
+            appendLine("FARTSVARSLER I BILEN")
+            append(CarNotificationDiagnostics.summary(this@MainActivity, carConnectionType))
             appendLine()
 
             appendLine("DIAGNOSTIKK")
@@ -171,6 +197,24 @@ class MainActivity : ComponentActivity() {
 
             appendLine("Fartsgrenser: Statens vegvesen, NVDB (NLOD 2.0).")
             appendLine("Beløpene er anslag. Politiet legger målt fart minus sikkerhetsfradrag til grunn, og appen kjenner ikke variable eller midlertidig skiltede fartsgrenser.")
+        }
+    }
+
+    /**
+     * Hele rapporten, ordrett, med versjon øverst. Uten versjonen er en innliming ubrukelig:
+     * halvparten av spørsmålene om en feil er «hvilken kode kjørte du».
+     */
+    private fun copyDiagnostics() {
+        val clipboard = getSystemService(ClipboardManager::class.java)
+        if (clipboard == null) {
+            Toast.makeText(this, "Fant ikke utklippstavla", Toast.LENGTH_LONG).show()
+            return
+        }
+        clipboard.setPrimaryClip(ClipData.newPlainText("Botometer-diagnostikk", status.text))
+        // Fra Android 13 viser systemet sin egen bekreftelse på kopiering. To bekreftelser er
+        // en for mye.
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+            Toast.makeText(this, "Diagnostikk kopiert", Toast.LENGTH_SHORT).show()
         }
     }
 

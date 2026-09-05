@@ -31,6 +31,11 @@
             <action android:name="androidx.car.app.CarAppService" />
         </intent>
         <package android:name="com.google.android.projection.gearhead" />
+        <!-- CarConnection leser tilkoblingsstatus fra denne provideren. Uten en <queries>-
+             oppføring er den usynlig fra Android 11, og CarConnection rapporterer «ikke
+             tilkoblet» ALLTID - altså en diagnostikk som lyver i den ene retningen det
+             betyr noe. -->
+        <provider android:authorities="androidx.car.app.connection" />
     </queries>
 
     <!-- Ingen <uses-feature> for android.hardware.type.automotive eller

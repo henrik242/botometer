@@ -9,6 +9,7 @@ import android.os.Build
 import androidx.car.app.notification.CarAppExtender
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import no.synth.botometer.Diagnostics
 import no.synth.botometer.MainActivity
 import no.synth.botometer.R
 import no.synth.botometer.fine.FineEstimate
@@ -101,9 +102,15 @@ class SpeedingAlerts(
             )
             .build()
 
-        // Varselstillatelsen er brukerens; mangler den, skal ingenting krasje.
+        // Varselstillatelsen er brukerens; mangler den, skal ingenting krasje. Men feilen skal
+        // ikke forsvinne heller: et varsel som ble kastet i stillhet ser ut som et varsel som
+        // ble sendt, og da leter du etter feilen alle andre steder enn der den er.
         runCatching {
             NotificationManagerCompat.from(context).notify(id, notification)
+        }.onSuccess {
+            Diagnostics.alertPosted(title, text, Diagnostics.carSessionIsActive)
+        }.onFailure {
+            Diagnostics.alertFailed(it.message ?: it.javaClass.simpleName)
         }
     }
 
@@ -124,7 +131,12 @@ class SpeedingAlerts(
         .reversed().chunked(3).joinToString(" ").reversed()
 
     companion object {
-        private const val CHANNEL_ID = "speeding"
+        /**
+         * Offentlig fordi diagnostikken må kunne lese kanalens FAKTISKE viktighet fra systemet.
+         * Vår egen `createChannel` sier bare hva vi ba om - og viktighet kan bare senkes, aldri
+         * heves, så det vi ba om er ikke nødvendigvis det vi fikk.
+         */
+        const val CHANNEL_ID = "speeding"
         private const val NOTIFICATION_ID = 2
     }
 }
