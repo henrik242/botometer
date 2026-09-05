@@ -36,6 +36,7 @@ class SpeedingAlerts(
 ) {
 
     private val policy = AlertPolicy(now)
+    private val upcomingPolicy = UpcomingLimitPolicy(now)
 
     fun onReading(reading: SpeedWatch.Reading) {
         when (val decision = policy.next(reading.estimate)) {
@@ -44,11 +45,34 @@ class SpeedingAlerts(
                 runCatching { NotificationManagerCompat.from(context).cancel(NOTIFICATION_ID) }
             is AlertPolicy.Decision.Alert -> post(decision.estimate)
         }
+
+        val upcoming = reading.upcoming
+        when (
+            val decision = upcomingPolicy.next(upcoming?.limitKmt, upcoming?.meters, upcoming?.estimate)
+        ) {
+            is UpcomingLimitPolicy.Decision.Ignore -> Unit
+            is UpcomingLimitPolicy.Decision.Warn -> postUpcoming(decision)
+        }
+    }
+
+    /**
+     * Egen varsel-id, ikke samme som bøtevarselet: de to sier forskjellige ting, og et varsel om
+     * hva farten koster nå skal ikke forsvinne fordi det kommer en 50-sone om 200 meter.
+     */
+    private fun postUpcoming(warn: UpcomingLimitPolicy.Decision.Warn) {
+        val cost = when (val e = warn.estimate) {
+            is FineEstimate.SimplifiedFine -> "${nok(e.amountNok)} kr"
+            is FineEstimate.Prosecution -> "anmeldelse"
+            else -> return
+        }
+        notify(
+            NOTIFICATION_ID_UPCOMING,
+            "Snart ${warn.limitKmt} km/t",
+            "Om ca. ${warn.meters} m · farten du har nå: $cost",
+        )
     }
 
     private fun post(estimate: FineEstimate) {
-        createChannel()
-
         val title = when (estimate) {
             is FineEstimate.SimplifiedFine -> "${nok(estimate.amountNok)} kr"
             is FineEstimate.Prosecution -> "Anmeldelse"
@@ -70,6 +94,12 @@ class SpeedingAlerts(
                 "${estimate.overKmt} km/t over · over taket for forenklet forelegg"
             else -> return
         }
+
+        notify(NOTIFICATION_ID, title, text)
+    }
+
+    private fun notify(id: Int, title: String, text: String) {
+        createChannel()
 
         val open = PendingIntent.getActivity(
             context, 0,
@@ -99,7 +129,7 @@ class SpeedingAlerts(
 
         // Varselstillatelsen er brukerens; mangler den, skal ingenting krasje.
         runCatching {
-            NotificationManagerCompat.from(context).notify(NOTIFICATION_ID, notification)
+            NotificationManagerCompat.from(context).notify(id, notification)
         }
     }
 
@@ -122,5 +152,6 @@ class SpeedingAlerts(
     companion object {
         private const val CHANNEL_ID = "speeding"
         private const val NOTIFICATION_ID = 2
+        private const val NOTIFICATION_ID_UPCOMING = 3
     }
 }

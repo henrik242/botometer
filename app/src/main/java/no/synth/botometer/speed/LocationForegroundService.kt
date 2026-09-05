@@ -21,9 +21,10 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
 import no.synth.botometer.Diagnostics
 import no.synth.botometer.MainActivity
+import no.synth.botometer.R
 import no.synth.botometer.alert.SpeedWatch
 import no.synth.botometer.alert.SpeedingAlerts
-import no.synth.botometer.R
+import no.synth.botometer.limit.ManualLimit
 
 /**
  * Eier GPS-abonnementet så lenge speedometeret vises i bilen.
@@ -109,6 +110,9 @@ class LocationForegroundService : Service() {
         alertJob = null
         scope.cancel()
         SpeedFeed.clear()
+        // Turen er over. En manuell fartsgrense som overlever til neste tur er en grense du har
+        // glemt at du satte, og den ville regnet bot av feil tall i stillhet.
+        ManualLimit.clear()
         super.onDestroy()
     }
 

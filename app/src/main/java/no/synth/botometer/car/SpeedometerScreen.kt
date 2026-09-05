@@ -16,15 +16,10 @@ import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.launch
-import no.synth.botometer.BotometerApp
-import no.synth.botometer.R
-import no.synth.botometer.fine.FineCalculator
-import no.synth.botometer.fine.FineTableRepository
+import no.synth.botometer.alert.SpeedWatch
 import no.synth.botometer.speed.GpsSpeedSource
 import no.synth.botometer.speed.LocationForegroundService
-import no.synth.botometer.speed.SpeedFeed
 
 /**
  * Bruker NavigationTemplate fordi det er den ENESTE templaten i Car App Library som gir tilgang
@@ -37,18 +32,17 @@ import no.synth.botometer.speed.SpeedFeed
  */
 class SpeedometerScreen(carContext: CarContext) : Screen(carContext), DefaultLifecycleObserver {
 
-    // Leser fra disk-cachen om den finnes, ellers asseten. Ingen nettverk i bilen - satsene
-    // oppdateres fra telefon-appen.
-    private val tableStatus = FineTableRepository(
-        carContext, carContext.getString(R.string.satser_url)
-    ).load()
+    // Samme regnestykke som telefonskjermen og fartsvarslene bruker: fart inn, bot ut, med
+    // GPS-friskhet, manuell fartsgrense og hysterese på ett sted. Tre kopier ville betydd at
+    // appen kunne varsle om en bot den ikke viser.
+    //
+    // Leser satsene fra disk-cachen om den finnes, ellers asseten. Ingen nettverk i bilen -
+    // satsene oppdateres fra telefon-appen.
+    private val watch = SpeedWatch(carContext)
 
-    private val calculator = FineCalculator(tableStatus.table)
-    private val renderer = SpeedometerRenderer(carContext, calculator, ratesStale = tableStatus.stale)
-
-    // Delt med telefonskjermen og fartsvarslene. To repoer ville gitt to rute-cacher og dobbelt
-    // så mange kall mot NVDB for de samme rutene.
-    private val repo = (carContext.applicationContext as BotometerApp).speedLimits
+    private val renderer = SpeedometerRenderer(
+        carContext, watch.calculator, ratesStale = watch.ratesStale
+    )
 
     private var collectJob: Job? = null
 
@@ -74,10 +68,7 @@ class SpeedometerScreen(carContext: CarContext) : Screen(carContext), DefaultLif
 
         collectJob?.cancel()
         collectJob = lifecycleScope.launch {
-            SpeedFeed.fixes.filterNotNull().collect { fix ->
-                val match = repo.limitAt(fix.position, fix.headingDeg, fix.speedKmt)
-                renderer.update(fix, match)
-            }
+            watch.readings().collect { renderer.update(it) }
         }
     }
 
@@ -113,8 +104,8 @@ class SpeedometerScreen(carContext: CarContext) : Screen(carContext), DefaultLif
                                 CarToast.makeText(
                                     carContext,
                                     buildString {
-                                        append("Satser pr. ${calculator.version}")
-                                        if (tableStatus.stale) append(" (UTDATERT - oppdater i telefon-appen)")
+                                        append("Satser pr. ${watch.calculator.version}")
+                                        if (watch.ratesStale) append(" (UTDATERT - oppdater i telefon-appen)")
                                         append(". Anslag - ikke juridisk bindende. Fartsgrenser: Statens vegvesen (NLOD 2.0).")
                                     },
                                     CarToast.LENGTH_LONG,
