@@ -83,8 +83,17 @@ class NvdbClient(
             append("&inkluder=egenskaper,geometri,lokasjon")
             append("&segmentering=true")
             append("&antall=$PAGE_SIZE")
-            // Vi bryr oss verken om rekkefølge eller totalantall; begge koster tid på serveren.
-            append("&sortering=false&inkluderAntall=false")
+            // Totalantallet er irrelevant for en kartvisning, og det koster tid på serveren å
+            // telle det opp.
+            //
+            // Her sto også sortering=false. Den parameteren finnes ikke i v4 - den er fra v3 -
+            // og v4 AVVISER ukjente parametre i stedet for å ignorere dem:
+            //
+            //   {"detail":"Ukjente parametre: sortering","status":400,...}
+            //
+            // Legg derfor aldri til en parameter her uten å slå den opp i v4-dokumentasjonen.
+            // NvdbClientErrorTest låser settet, så en ny parameter må gjøres bevisst.
+            append("&inkluderAntall=false")
             if (start != null) append("&start=$start")
         }
 

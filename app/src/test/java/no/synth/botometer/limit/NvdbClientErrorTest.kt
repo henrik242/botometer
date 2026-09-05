@@ -84,6 +84,31 @@ class NvdbClientErrorTest {
         assertEquals("NVDB svarte 400", e.message)
     }
 
+    /**
+     * v4 avviser ukjente parametre i stedet for å ignorere dem:
+     *
+     *   {"detail":"Ukjente parametre: sortering","status":400,"title":"Ugyldig forespørsel"}
+     *
+     * Kallet bar med seg `sortering=false` fra v3, og da feilet hvert eneste oppslag - permanent,
+     * siden en 400 med rette ikke prøves på nytt. Appen viste «ingen fartsgrense» hele veien.
+     *
+     * Settet er derfor låst her. En ny parameter skal koste en linje i denne testen og et
+     * oppslag i v4-dokumentasjonen, ikke en stille 400 ute i bilen.
+     */
+    @Test
+    fun `bare parametre v4 faktisk kjenner sendes`() {
+        server.enqueue(MockResponse().setBody("""{"objekter":[],"metadata":{}}"""))
+
+        runBlocking { clientAgainstServer().speedLimitsIn(bbox) }
+
+        val query = server.takeRequest().path!!.substringAfter('?')
+        val names = query.split('&').map { it.substringBefore('=') }.toSet()
+        assertEquals(
+            setOf("kartutsnitt", "srid", "inkluder", "segmentering", "antall", "inkluderAntall"),
+            names,
+        )
+    }
+
     @Test
     fun `X-Client sendes, ellers struper Vegvesenet oss`() {
         server.enqueue(MockResponse().setBody("""{"objekter":[],"metadata":{}}"""))
