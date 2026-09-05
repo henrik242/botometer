@@ -4,6 +4,7 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Looper
 import android.util.Log
 import androidx.car.app.CarContext
@@ -76,6 +77,19 @@ class GpsSpeedSource(private val context: Context) {
         fun hasLocationPermission(context: Context): Boolean =
             ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) ==
                 PackageManager.PERMISSION_GRANTED
+
+        /**
+         * Uten denne får ikke bilskjermen fart: en location-tjeneste kan bare startes mens appen
+         * er i forgrunnen når posisjonstilgangen er «mens appen er i bruk», og bilskjermen
+         * teller ikke som forgrunn.
+         *
+         * Før Android 10 fantes ikke skillet, og da er den alltid oppfylt.
+         */
+        fun hasBackgroundLocationPermission(context: Context): Boolean =
+            Build.VERSION.SDK_INT < Build.VERSION_CODES.Q ||
+                ContextCompat.checkSelfPermission(
+                    context, Manifest.permission.ACCESS_BACKGROUND_LOCATION
+                ) == PackageManager.PERMISSION_GRANTED
     }
 }
 

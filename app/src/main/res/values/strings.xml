@@ -15,6 +15,7 @@
     <string name="open_phone_speedometer">Vis speedometer på telefonen</string>
     <string name="phone_speedometer_title">Speedometer</string>
     <string name="clear_crash_log">Tøm krasjloggen</string>
+    <string name="always_allow_location">Posisjon: tillat alltid</string>
     <!-- Oppdateringskanal for bøtesatsene. Uten Play må satsene kunne hentes uavhengig av
          APK-versjonen, ellers kjører gamle installasjoner utdaterte tall i stillhet. -->
     <string name="satser_url" translatable="false">https://raw.githubusercontent.com/henrik242/botometer/main/satser/botesatser.json</string>
