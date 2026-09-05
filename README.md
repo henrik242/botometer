@@ -6,10 +6,11 @@ risiko for tap av førerrett, basert på gjeldende fartsgrense fra NVDB.
 ```
 ┌──────────────────────────────┐
 │            97          ⃝80  │   fart (km/t) + skiltet fartsgrense
-│           km/t               │
+│           km/t          ⃝50  │   og den lavere sonen rett foran
 │                              │
 │         7 450 kr             │   forenklet forelegg
-│  17 km/t over · 2 prikker    │
+│ Snart 50 km/t om 190 m ·     │
+│      13 450 kr i denne farten│
 │   EV6 S75D1 · satser 2026… │
 └──────────────────────────────┘
 ```
@@ -153,6 +154,7 @@ nyttig den er.
 | Data | Kilde | Lisens |
 |---|---|---|
 | Fartsgrenser | NVDB API LES v4, vegobjekttype 105, egenskap 2021 | NLOD 2.0 |
+| Motorvegstatus | NVDB API LES v4, vegobjekttype 595, egenskap 5378 | NLOD 2.0 |
 | Bøtesatser | Forskrift om forenklet forelegg (Lovdata, NLOD 2.0), manuelt vedlikeholdt, endringsvarsel i CI | — |
 | Prikker / tap av førerrett | Prikkforskriften, tapsforskriften | — |
 
@@ -168,6 +170,10 @@ GET https://nvdbapiles.atlas.vegvesen.no/vegobjekter/api/v4/vegobjekter/105
 X-Client: botometer-android
 ```
 
+Samme kall med `595` i stedet for `105` gir motorvegstrekningene. Det hentes **bare når den
+matchede fartsgrensen er 90 km/t eller høyere**, siden det er den eneste satsen som skiller på
+vegtype - en 50-sone koster altså fortsatt ett kall per rute, ikke to.
+
 Åpent, ingen nøkkel, men `X-Client` er påkrevd av Vegvesenet - uten den risikerer du struping.
 Sett din egen verdi i `res/values/strings.xml`.
 
@@ -180,17 +186,49 @@ til; `NvdbClientErrorTest` låser settet så en utvidelse må gjøres bevisst.
 
 ```
 LocationForegroundService ─→ GpsSpeedSource ─→ SpeedFeed (StateFlow) ─┐
-                                                                      ├─→ SpeedometerScreen ─→ SpeedometerRenderer (Canvas på Surface)
-SpeedLimitRepository ──LimitMatch─────────────────────────────────────┘         │
-    ├── NvdbClient (OkHttp, paginert, typede feil)                              └─→ FineCalculator ─→ FineTable (assets)
-    ├── LruCache<Tile, List<Segment>>        (positiv cache)
-    └── HashMap<Tile, Failure>               (negativ cache + backoff)
+                                            + 1 Hz puls ─────────────┤
+                                                                      ↓
+                                                                  SpeedWatch ─→ Reading
+SpeedLimitRepository ──LimitMatch─────────────────────────────────────┘   │      ├─→ SpeedometerRenderer (bilskjerm)
+    ├── NvdbClient (OkHttp, paginert, typede feil)                        │      ├─→ PhoneSpeedometerActivity
+    ├── LruCache<Tile, List<Segment>>        (fartsgrenser)               │      └─→ SpeedingAlerts
+    ├── LruCache<Tile, List<Motorveg>>       (bare i 90-soner)            │
+    └── HashMap<Tile+lag, Failure>           (negativ cache + backoff)    └─→ FineCalculator ─→ FineHysteresis
 ```
+
+**Hvorfor ett `SpeedWatch` og ikke tre regnestykker:** de tre flatene viste tidligere hver sin
+utregning av det samme. Da kan appen varsle om en bot den ikke viser, og en regel som legges inn
+ett sted - GPS-friskhet, manuell fartsgrense, hysterese - gjelder bare den ene flaten. Nå går
+fart, fartsgrense og bot gjennom én `Reading`, og flatene tegner den.
 
 **Hvorfor tile-cache og ikke ett kall per posisjon:** NVDB-kall tar hundrevis av millisekunder, og
 mobildekning i norske dalfører og tunneler er upålitelig. Repoet laster ~2×2 km ruter, cacher dem i
 minnet, og forhåndslaster ruta ~60 sekunder foran bilen ut fra kurs og fart. Faller nettet ut,
 vises siste sikre treff dempet (`stale`) i stedet for «ukjent».
+
+**Hvorfor en puls, og ikke bare GPS-fix:** `SpeedFeed` er en `StateFlow`, og en StateFlow
+emitterer bare når verdien endrer seg. Forsvant GPS-en i en tunnel, sluttet fixene å komme - og
+skjermen ble stående med den siste farten og det siste bøtebeløpet, uendret, uten et eneste tegn
+på at tallet var dødt. Det så ut som en app som virket, og det er den farligste feilen appen kan
+gjøre.
+
+`SpeedWatch` slår derfor sammen fixene med en puls på 1 Hz, og hvert `SpeedFix` bærer sitt eget
+`elapsedRealtime`. [`FixFreshness`](app/src/main/java/no/synth/botometer/speed/FixFreshness.kt)
+oversetter alderen: over 5 sekunder er signalet borte (skjermen sier fra), over 20 sekunder er
+farten satt til 0 og vises som «--», mens fartsgrensen beholdes - den gjelder fortsatt inne i
+tunnelen. Monoton klokke og ikke veggklokke, ellers ville et tidshopp bakover gjort et gammelt
+fix ferskt igjen.
+
+**Hvorfor GPS-nøyaktigheten brukes til noe:** `accuracyMeters` var lest fra hvert fix og aldri
+brukt. Et fix på ±25 m kan ligge 25 m fra vegen det faktisk er på, og med et fast matchevindu på
+30 m ble det bom - som vises som forrige treff eller «ukjent», ikke som «GPS-en er dårlig her».
+Vinduet vokser nå med usikkerheten (30 m + nøyaktighet, maks 60 m), nøyaktigheten setter et tak på
+hvor sikkert et treff kan bli, og over ±50 m hoppes matchingen helt over: å velge mellom vegene i
+et kryss ut fra en posisjon som kan være femti meter feil er å trekke lodd.
+
+Farten røres ikke av dette. Fart fra GNSS er dopplermålt og god også når posisjonen er upresis, så
+å dempe den ut fra `accuracy` ville skjult en ekte bot. Det som mangler fart - `hasSpeed()` er
+false, typisk en nettverksposisjon - er derimot merket, i stedet for å bli lest som stillstand.
 
 **Hvorfor kart-matching med kursfilter:** nærmeste linjestykke alene plukker lett en parallell
 lokalveg eller en avkjøringsrampe med annen fartsgrense. `SpeedLimitRepository` avviser segmenter
@@ -220,6 +258,42 @@ ut som «her finnes det ingen fartsgrense».
 i praksis 3 km/t opp til 100 km/t, 3 % over. Uten det ville appen systematisk overdrive boten i
 grenseland. Fradraget ligger i `Tolerance` i satsfilen, ikke i koden.
 
+**Hvorfor hysterese, og hvorfor den er usymmetrisk:** GPS-farten vaker et par tideler. Ligger du
+på nøyaktig 16 km/t over, hoppet trinnet mellom 15 og 16 flere ganger i sekundet - og beløpet
+mellom 5 950 og 8 650 kroner. To steder trengte demping, og de trenger hver sin:
+
+- **Trinnet** (`FineHysteresis`): oppover slipper alltid gjennom med én gang, nedover må ha holdt
+  seg i 1,5 sekunder. Et beløp som er for lavt lyver om konsekvensen; et som er for høyt er bare
+  gammelt. Og siden bare den ene retningen venter, kan trinnet ikke vippe fram og tilbake. Bytter
+  fartsgrensen, nullstilles alt - å holde igjen et trinn fra en sone du nettopp forlot ville vist
+  en bot for en fartsgrense som ikke gjelder.
+- **Segmentet** (`SpeedLimitRepository.stabilize`): i et kryss ligger to segmenter med ulik grense
+  nesten like nær, og vinneren skifter fra fix til fix. Den nye grensen må vinne 8 meter over den
+  vi allerede viser - samme margin som skiller et utvetydig treff fra et tvetydig et. Ved et ekte
+  soneskifte holder det ikke igjen: segmentet du forlot slutter ved skiltet, så avstanden til det
+  vokser med farten din.
+
+**Hvorfor tillit (`MatchConfidence`):** vinneren alene sier ikke om den vant klart. Ligger to
+segmenter med ulik fartsgrense like nær, er treffet et myntkast - og et myntkast skal ikke se ut
+som et faktum på en bilskjerm. Tilliten kommer av avstanden, avstanden opp til nærmeste kandidat
+med en *annen* grense, og GPS-nøyaktigheten, og et lavt tall demper skiltet på skjermen.
+
+**Hvorfor se framover:** ruta foran bilen ligger allerede i minnet fra forhåndslastingen, så
+matchingen kan kjøres en gang til på et punkt ~8 sekunder fram (maks 400 m) uten et eneste ekstra
+NVDB-kall. Bare når grensen der framme er **lavere** enn den du har: 80-til-50 inn i et tettsted
+er en overraskelse som koster penger, mens en høyere grense lenger fram er ingen nyhet. Skiltet
+på skjermen viser fortsatt grensen som gjelder her og nå - en grense som vises før den gjelder
+ville vært direkte feil - men det kommer et lite varselskilt under, og et varsel om den blir en
+bot i farten du har.
+
+**Hvorfor manuell fartsgrense:** NVDB dekker ikke alt. På private veger, ny veg og strekninger
+der fartsgrenseobjektet mangler viste appen «Ukjent fartsgrense» og sluttet å regne - altså
+ingenting, akkurat der du helst vil vite. `ManualLimit` lar brukeren sette en grense selv, og den
+gjelder alle tre flatene, ellers ville varslene regnet på noe annet enn skjermen. Bare telefonen
+kan *sette* den: en rad med knapper på bilskjermen er en invitasjon til å fikle under kjøring.
+Den nullstilles når posisjonssporingen stopper, så en manuell grense aldri overlever til neste
+tur uten at du vet om det.
+
 ## Kjente svakheter
 
 Etter review-runden står følgende igjen som uløst. Det viktigste først:
@@ -234,9 +308,14 @@ Etter review-runden står følgende igjen som uløst. Det viktigste først:
   var systematisk - 30-soner i tettsteder er mange korte strekninger, 80-veger er én lang - så
   fantomlinjene spente over hovedvegen og lot lav grense vinne. `MultiLineSegmentTest` holder det
   ute. Diagnostikken viser nå også kandidatene matchingen forkastet, ikke bare vinneren.
-- **Hysterese mangler**, både på trinnvalg og segmentvalg. Beløpet vil flimre rundt en trinngrense,
-  og fartsgrensen kan hoppe mellom to nesten like gode segmenter i kryss. Dette er det neste som
-  bør fikses - det er tallet som trekker blikket.
+- **Motorvegoppslaget hviler på en antakelse om NVDB-formatet.** Vegobjekttype 595 og egenskap
+  5378 er slått opp i datakatalogen, men hvordan enum-verdien kommer tilbake - `enum_id` 7355/7356,
+  teksten «Motorveg»/«Motortrafikkveg», eller begge - er ikke verifisert mot det ekte API-et.
+  Parsingen godtar derfor begge former og ekskluderer bare det som *eksplisitt* er
+  motortrafikkveg; typen HETER Motorveg, så «objekt av denne typen er motorveg» er det som
+  fortsatt stemmer om kodingen endrer seg. Diagnostikken viser antall motorvegsegmenter per rute:
+  står den på 0 der du vet du kjørte motorveg, er antakelsen gal. `MotorwayLookupTest` låser
+  begge formene.
 - **Ingen høydeinformasjon i matchingen.** Bru over veg og tunnel under veg matcher mot hverandre.
   NVDB leverer Z i WKT-en; `Wkt.parsePoint` kaster den i dag.
 - **Farge er eneste koding** av alvorlighetsgrad, som utelukker rød-grønn fargeblindhet.
@@ -245,8 +324,14 @@ Etter review-runden står følgende igjen som uløst. Det viktigste først:
   doblingsregelen for førerkort i prøveperioden.
 - **«X km/t til første bot»** optimaliserer mot bøtegrensen, ikke mot bremselengde. Vurder å bytte
   linjen mot stopplengde ved gjeldende fart.
-- **`SpeedLimitRepository` har ingen tester.** `now`-parameteren er injiserbar for formålet, men
-  `NvdbClient` må bak et interface før backoff-logikken kan testes.
+- **Backoff-logikken i `SpeedLimitRepository` er fortsatt utestet.** Matchingen har tester nå
+  (`SpeedLimitMatchingTest`, `MotorwayLookupTest`) - `NvdbClient.baseUrl` peker på en lokal
+  server - men `now`-parameteren er ikke tatt i bruk av noen test, så backoff og negativ cache
+  er bare lest, ikke kjørt.
+- **Framoverblikket bruker matchevinduet til dagens posisjon.** Punktet ~8 sekunder fram er
+  ekstrapolert i rett linje fra kursen, så i en sving peker det utenfor vegen og treffer ingenting.
+  Det gir et manglende varsel, ikke et falskt, men i svingete terreng er funksjonen omtrent uten
+  effekt.
 - **Wkt-sanity-sjekken bruker breddegrad 57-72**, så Svalbard forkastes stille.
 
 ### Datakvalitet
@@ -254,9 +339,10 @@ Etter review-runden står følgende igjen som uløst. Det viktigste først:
 - **Variable fartsgrenser** (tunneler, motorvei med skiltstyring) ligger ikke i NVDB som gjeldende
   verdi. Appen viser den skiltede statiske grensen og tar feil der.
 - **Midlertidig skilting** ved veiarbeid finnes ikke i NVDB i sanntid.
-- **Motorveg-flagget** er ikke slått opp. Satsen for 36–40 km/t over i 90-sone eller høyere gjelder
-  bare motorveg; appen markerer den som «usikker». Fiks: slå opp riktig vegobjekttype for motorveg
-  i datakatalogen (`/vegobjekttyper`) og legg den inn som en parallell tile-oppslag.
+- **Motorveg-flagget** slås nå opp (vegobjekttype 595), men bare i 90-soner og over, og bare når
+  ruta rekker å bli lastet. Rekker den ikke det, er svaret fortsatt «vet ikke», og satsen for
+  36–40 km/t over markeres som «usikker» slik den alltid har blitt. En manuelt satt fartsgrense
+  sier heller ingenting om vegtype, og gir samme usikkerhet.
 - **Ingen persistering av tiles** over app-restart. Room eller en enkel fil-cache er neste steg om
   du vil ha det til å fungere offline i kjente områder.
 - Beløpene er **anslag**. Politiet kan velge vanlig forelegg også i lavere sjikt, og gjentakelse
@@ -329,7 +415,7 @@ Derfor finnes appen på tre flater i stedet:
 |---|---|---|
 | **Bilskjermen** | Botometer er valgt i bilen | Speedometeret, tegnet på `NavigationTemplate` |
 | **Telefonen** | Maps eier bilskjermen | Samme tall, stor skrift, skjermen holdes våken |
-| **Varsel** | Alltid, i bakgrunnen | Heads-up når farten krysser inn i et nytt bøtenivå |
+| **Varsel** | Alltid, i bakgrunnen | Heads-up når farten krysser inn i et nytt bøtenivå, og når en lavere sone rett foran vil koste deg noe |
 
 `LocationForegroundService` eier GPS-abonnementet og lever videre når Maps overtar skjermen, så
 varslene virker uansett hvem som eier bilskjermen. Varselet er `IMPORTANCE_HIGH` og utvidet med
@@ -338,13 +424,19 @@ varslene virker uansett hvem som eier bilskjermen. Varselet er `IMPORTANCE_HIGH`
 **Varselet kommer bare ved overgang til et nytt nivå.** Et varsel per GPS-fix er ikke et varsel,
 det er støy, og Google er tydelig på at heads-up er forbeholdt noe «drive-critical, time
 sensitive, and actionable». At beløpet nettopp gikk fra 4 800 til 7 450 kroner er det. At du
-fortsatt ligger 17 over er det ikke. Hysteresen som mangler (se «Kjente svakheter») er grovt
-kompensert med et minste intervall mellom varsler, så en vipping på trinngrensa gir ett varsel
-og ikke ti.
+fortsatt ligger 17 over er det ikke. `FineHysteresis` demper vippingen på selve trinngrensa, og
+`AlertPolicy` legger et minste intervall mellom varsler oppå det.
+
+**Det andre varselet er sonen som kommer.** `UpcomingLimitPolicy` sier fra når fartsgrensen litt
+lenger fram er lavere *og* farten du allerede har ville kostet deg noe der - 80-til-50 inn i et
+tettsted. Er farten lovlig også der framme, sies ingenting; et varsel om noe som ikke koster deg
+noe er akkurat den støyen som gjør at de ekte varslene ikke blir lest. Det har sin egen varsel-id,
+så en beskjed om det som kommer ikke sletter beskjeden om det som gjelder nå.
 
 De tre flatene deler ett `SpeedLimitRepository`, opprettet i `BotometerApp`. Rute-cachen ligger i
 instansen, så tre repoer ville betydd tre cacher og tre ganger så mange kall mot NVDB for de
-samme rutene.
+samme rutene. Selve regnestykket deles av ett `SpeedWatch` per flate - hver med sin egen
+satstabell, så «Oppdater satser» slår gjennom uten omstart av prosessen.
 
 ## Personvern
 
