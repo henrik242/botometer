@@ -28,6 +28,22 @@ data class SpeedFix(
     val headingDeg: Double?,
     val accuracyMeters: Float,
     val source: Source,
+    /**
+     * Da fixet ble målt, på monoton klokke ([android.os.SystemClock.elapsedRealtime]).
+     *
+     * Uten denne kan ingen se at farten på skjermen er død. [SpeedFeed] holder siste fix, og et
+     * tall som ikke oppdateres ser ut som et tall som ikke endrer seg: i en tunnel ble 97 km/t
+     * stående med et voksende bøtebeløp til bilen kom ut igjen. Se [FixFreshness].
+     *
+     * Monoton og ikke veggklokke: veggklokka kan hoppe, og et hopp bakover ville gjort et
+     * gammelt fix ferskt igjen.
+     */
+    val elapsedRealtimeMs: Long,
+    /**
+     * false når posisjonen kom uten fartsmåling - typisk en nettverksposisjon. Farten er da 0,
+     * og det er en antakelse, ikke en måling.
+     */
+    val hasMeasuredSpeed: Boolean = true,
 ) {
     enum class Source { GPS, CAR }
 }
@@ -57,13 +73,18 @@ class GpsSpeedSource(private val context: Context) {
         val callback = object : LocationCallback() {
             override fun onLocationResult(result: LocationResult) {
                 val loc = result.lastLocation ?: return
+                // hasSpeed(): Location.getSpeed() er 0 både når du står stille og når fixet ikke
+                // har fart i det hele tatt, og de to betyr ikke det samme.
+                val measured = loc.hasSpeed()
                 trySend(
                     SpeedFix(
-                        speedKmt = (loc.speed * 3.6).toDouble(),
+                        speedKmt = if (measured) (loc.speed * 3.6).toDouble() else 0.0,
                         position = LatLon(loc.latitude, loc.longitude),
                         headingDeg = if (loc.hasBearing() && loc.speed > 1.5f) loc.bearing.toDouble() else null,
                         accuracyMeters = loc.accuracy,
                         source = SpeedFix.Source.GPS,
+                        elapsedRealtimeMs = loc.elapsedRealtimeNanos / 1_000_000L,
+                        hasMeasuredSpeed = measured,
                     )
                 )
             }

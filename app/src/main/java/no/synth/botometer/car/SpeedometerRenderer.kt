@@ -8,10 +8,11 @@ import android.graphics.Typeface
 import androidx.car.app.CarContext
 import androidx.car.app.SurfaceCallback
 import androidx.car.app.SurfaceContainer
+import no.synth.botometer.alert.SpeedWatch
 import no.synth.botometer.fine.FineCalculator
 import no.synth.botometer.fine.FineEstimate
-import no.synth.botometer.limit.LimitMatch
-import no.synth.botometer.speed.SpeedFix
+import no.synth.botometer.limit.MatchConfidence
+import no.synth.botometer.speed.FixFreshness
 import java.text.NumberFormat
 import java.util.Locale
 import kotlin.math.roundToInt
@@ -33,8 +34,7 @@ class SpeedometerRenderer(
     private var container: SurfaceContainer? = null
     private var visible: Rect? = null
 
-    private var fix: SpeedFix? = null
-    private var match: LimitMatch? = null
+    private var reading: SpeedWatch.Reading? = null
 
     private val nok = NumberFormat.getIntegerInstance(Locale("nb", "NO"))
 
@@ -85,9 +85,8 @@ class SpeedometerRenderer(
         container = null
     }
 
-    fun update(fix: SpeedFix, match: LimitMatch?) {
-        this.fix = fix
-        this.match = match
+    fun update(reading: SpeedWatch.Reading) {
+        this.reading = reading
         draw()
     }
 
@@ -110,103 +109,162 @@ class SpeedometerRenderer(
         val h = area.height().toFloat()
         val unit = h / 10f   // all typografi skaleres mot synlig høyde
 
-        val f = fix
-        if (f == null) {
+        val r = reading
+        if (r == null) {
             smallText.textSize = unit * 1.0f
             canvas.drawText("Venter på GPS…", cx, area.centerY().toFloat(), smallText)
             return
         }
 
-        val speed = f.speedKmt.roundToInt()
-        val limit = match?.limitKmt
-        val estimate = calculator.estimate(f.speedKmt, limit)
+        val lost = r.freshness == FixFreshness.LOST
+        val estimate = r.estimate
 
         // Fargen bæres av boten, ikke av farten: grønn = ingen bot, gul = bot uten prikker,
-        // oransje = prikker, rød = anmeldelse/tap av førerrett.
-        val accent = when (estimate) {
-            is FineEstimate.NoOffence -> Color.rgb(60, 190, 100)
-            is FineEstimate.UnknownLimit -> Color.rgb(150, 150, 150)
-            is FineEstimate.SimplifiedFine ->
+        // oransje = prikker, rød = anmeldelse/tap av førerrett. Er GPS-en borte, er det ingen
+        // konsekvens å farge - da er grått det ærlige svaret.
+        val accent = when {
+            lost -> Color.rgb(150, 150, 150)
+            estimate is FineEstimate.NoOffence -> Color.rgb(60, 190, 100)
+            estimate is FineEstimate.UnknownLimit -> Color.rgb(150, 150, 150)
+            estimate is FineEstimate.SimplifiedFine ->
                 if (estimate.points == 0) Color.rgb(230, 195, 60) else Color.rgb(240, 140, 40)
-            is FineEstimate.Prosecution -> Color.rgb(225, 55, 55)
+            estimate is FineEstimate.Prosecution -> Color.rgb(225, 55, 55)
+            else -> Color.rgb(150, 150, 150)
         }
 
-        // Linje 1: farten
+        // Linje 1: farten. «--» og ikke «0» når signalet er borte: null er en måling, og vi har
+        // ingen. Et nulltall ville dessuten sett ut som at bilen står stille.
         bigText.color = accent
         bigText.textSize = unit * 3.4f
-        canvas.drawText("$speed", cx, area.top + unit * 3.4f, bigText)
+        canvas.drawText(if (lost) "--" else "${r.speedKmt.roundToInt()}", cx, area.top + unit * 3.4f, bigText)
         smallText.textSize = unit * 0.85f
         canvas.drawText("km/t", cx, area.top + unit * 4.3f, smallText)
 
         // Fartsgrenseskilt oppe til høyre
-        drawSign(canvas, area, unit, limit, match?.stale == true)
+        drawSign(canvas, area, unit, r)
 
         // Linje 2: konsekvensen
         midText.color = accent
         midText.textSize = unit * 2.2f
-        val headline = when (estimate) {
-            is FineEstimate.UnknownLimit -> "Ukjent fartsgrense"
-            is FineEstimate.NoOffence -> "Ingen bot"
-            is FineEstimate.SimplifiedFine -> "${nok.format(estimate.amountNok)} kr"
-            is FineEstimate.Prosecution -> "Anmeldelse"
+        val headline = when {
+            lost -> "Ingen GPS"
+            estimate is FineEstimate.UnknownLimit -> "Ukjent fartsgrense"
+            estimate is FineEstimate.NoOffence -> "Ingen bot"
+            estimate is FineEstimate.SimplifiedFine -> "${nok.format(estimate.amountNok)} kr"
+            estimate is FineEstimate.Prosecution -> "Anmeldelse"
+            else -> ""
         }
         canvas.drawText(headline, cx, area.top + unit * 6.9f, midText)
 
         // Linje 3: detaljer
         smallText.textSize = unit * 0.9f
-        canvas.drawText(subtitle(estimate, f), cx, area.top + unit * 8.1f, smallText)
+        canvas.drawText(subtitle(r), cx, area.top + unit * 8.1f, smallText)
 
         smallText.textSize = unit * 0.7f
         smallText.color = Color.rgb(110, 110, 115)
-        canvas.drawText(footer(), cx, area.bottom - unit * 0.4f, smallText)
+        canvas.drawText(footer(r), cx, area.bottom - unit * 0.4f, smallText)
         smallText.color = Color.LTGRAY
     }
 
-    private fun subtitle(estimate: FineEstimate, f: SpeedFix): String = when (estimate) {
-        is FineEstimate.UnknownLimit ->
-            if (match == null) "Ingen NVDB-data her" else "Fartsgrense mangler i NVDB"
-        is FineEstimate.NoOffence -> {
-            val margin = calculator.kmtToNextBand(f.speedKmt, match?.limitKmt)
-            if (margin != null && margin <= 10) "$margin km/t til første bot" else "Innenfor"
+    private fun subtitle(r: SpeedWatch.Reading): String {
+        // Signalet først. Alt annet på skjermen bygger på et fix, og er det borte, er det den
+        // eneste beskjeden som betyr noe.
+        when (r.freshness) {
+            FixFreshness.LOST ->
+                return if (r.limitKmt != null) {
+                    "Ingen GPS · fartsgrensen ${r.limitKmt} km/t gjelder fortsatt"
+                } else {
+                    "Ingen GPS - tunnel?"
+                }
+            FixFreshness.STALE -> return "Mistet GPS-signalet - venter"
+            FixFreshness.FRESH -> Unit
         }
-        is FineEstimate.SimplifiedFine -> buildString {
-            append("${estimate.overKmt} km/t over")
-            if (estimate.points > 0) append(" · ${estimate.points} prikker")
-            when (estimate.licence) {
-                no.synth.botometer.fine.LicenceOutcome.VURDERES -> append(" · beslag vurderes")
-                no.synth.botometer.fine.LicenceOutcome.INNDRAS -> append(" · tap av førerrett")
-                else -> Unit
+
+        // En lavere sone rett foran er tidskritisk på en helt annen måte enn detaljene om
+        // dagens bot, så den går foran dem.
+        r.upcoming?.let { u ->
+            val cost = when (val e = u.estimate) {
+                is FineEstimate.SimplifiedFine -> "${nok.format(e.amountNok)} kr"
+                is FineEstimate.Prosecution -> "anmeldelse"
+                else -> null
             }
-            if (estimate.uncertain) append(" (usikker)")
+            if (cost != null) return "Snart ${u.limitKmt} km/t om ${u.meters} m · $cost i denne farten"
         }
-        is FineEstimate.Prosecution ->
-            "${estimate.overKmt} km/t over · over taket for forenklet forelegg · tap av førerrett"
+
+        return when (val estimate = r.estimate) {
+            is FineEstimate.UnknownLimit ->
+                if (r.match == null) "Ingen NVDB-data her" else "Fartsgrense mangler i NVDB"
+            is FineEstimate.NoOffence -> {
+                val margin = calculator.kmtToNextBand(r.speedKmt, r.limitKmt)
+                if (margin != null && margin <= 10) "$margin km/t til første bot" else "Innenfor"
+            }
+            is FineEstimate.SimplifiedFine -> buildString {
+                append("${estimate.overKmt} km/t over")
+                if (estimate.points > 0) append(" · ${estimate.points} prikker")
+                when (estimate.licence) {
+                    no.synth.botometer.fine.LicenceOutcome.VURDERES -> append(" · beslag vurderes")
+                    no.synth.botometer.fine.LicenceOutcome.INNDRAS -> append(" · tap av førerrett")
+                    else -> Unit
+                }
+                if (estimate.uncertain) append(" (usikker)")
+            }
+            is FineEstimate.Prosecution ->
+                "${estimate.overKmt} km/t over · over taket for forenklet forelegg · tap av førerrett"
+        }
     }
 
-    private fun footer(): String {
-        val ref = match?.roadRef
-        val stale = if (match?.stale == true) " · cachet" else ""
+    private fun footer(r: SpeedWatch.Reading): String {
+        val ref = r.match?.roadRef
+        val source = when {
+            r.manualLimit -> " · fartsgrense satt manuelt"
+            r.match?.stale == true -> " · cachet"
+            r.match?.confidence == MatchConfidence.LOW -> " · usikkert vegvalg"
+            else -> ""
+        }
         // Utdaterte satser markeres på bilskjermen også. Et beløp som ser sikkert ut men bygger
         // på tre år gamle satser er verre enn ingen beløp.
         val rates = "satser ${calculator.version}" + if (ratesStale) " ⚠" else ""
-        return listOfNotNull(ref, rates).joinToString(" · ") + stale
+        return listOfNotNull(ref, rates).joinToString(" · ") + source
     }
 
-    private fun drawSign(canvas: Canvas, area: Rect, unit: Float, limit: Int?, stale: Boolean) {
-        val r = unit * 1.5f
-        val cx = area.right - r - unit * 0.8f
-        val cy = area.top + r + unit * 0.8f
+    /**
+     * Skiltet dempes når tallet ikke er å stole på: gammelt treff, usikkert vegvalg, eller dødt
+     * GPS-signal. Det er samme grep som `stale` alltid har hatt - poenget er at et tall som ikke
+     * gjelder heller ikke skal se ut som om det gjør det.
+     */
+    private fun drawSign(canvas: Canvas, area: Rect, unit: Float, r: SpeedWatch.Reading) {
+        val radius = unit * 1.5f
+        val cx = area.right - radius - unit * 0.8f
+        val cy = area.top + radius + unit * 0.8f
 
-        signFill.alpha = if (stale) 110 else 255
-        signRing.alpha = if (stale) 110 else 255
-        signText.alpha = if (stale) 140 else 255
-        signRing.strokeWidth = r * 0.22f
+        val dimmed = r.freshness != FixFreshness.FRESH ||
+            r.match?.stale == true ||
+            r.match?.confidence == MatchConfidence.LOW
 
-        canvas.drawCircle(cx, cy, r, signFill)
-        canvas.drawCircle(cx, cy, r - signRing.strokeWidth / 2, signRing)
+        signFill.alpha = if (dimmed) 110 else 255
+        signRing.alpha = if (dimmed) 110 else 255
+        signText.alpha = if (dimmed) 140 else 255
+        signRing.strokeWidth = radius * 0.22f
 
-        signText.textSize = r * 0.95f
-        val label = limit?.toString() ?: "?"
-        canvas.drawText(label, cx, cy + signText.textSize * 0.36f, signText)
+        canvas.drawCircle(cx, cy, radius, signFill)
+        canvas.drawCircle(cx, cy, radius - signRing.strokeWidth / 2, signRing)
+
+        signText.textSize = radius * 0.95f
+        canvas.drawText(r.limitKmt?.toString() ?: "?", cx, cy + signText.textSize * 0.36f, signText)
+
+        // Den lavere grensen foran, i et lite skilt under det store. Bare tall og piktogram -
+        // teksten som forklarer den står på linje 3.
+        val ahead = r.upcoming?.limitKmt ?: return
+        val smallRadius = radius * 0.62f
+        val ay = cy + radius + smallRadius + unit * 0.25f
+
+        signFill.alpha = 200
+        signRing.alpha = 200
+        signText.alpha = 230
+        signRing.strokeWidth = smallRadius * 0.22f
+        canvas.drawCircle(cx, ay, smallRadius, signFill)
+        canvas.drawCircle(cx, ay, smallRadius - signRing.strokeWidth / 2, signRing)
+        signText.textSize = smallRadius * 0.95f
+        canvas.drawText("$ahead", cx, ay + signText.textSize * 0.36f, signText)
     }
 }

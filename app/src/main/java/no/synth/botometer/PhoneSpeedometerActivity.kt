@@ -4,6 +4,8 @@ import android.graphics.Color
 import android.os.Bundle
 import android.view.Gravity
 import android.view.WindowManager
+import android.widget.Button
+import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.activity.ComponentActivity
@@ -17,6 +19,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import no.synth.botometer.alert.SpeedWatch
 import no.synth.botometer.fine.FineEstimate
+import no.synth.botometer.limit.ManualLimit
+import no.synth.botometer.limit.MatchConfidence
+import no.synth.botometer.speed.FixFreshness
 import no.synth.botometer.speed.GpsSpeedSource
 import no.synth.botometer.speed.LocationForegroundService
 
@@ -29,6 +34,10 @@ import no.synth.botometer.speed.LocationForegroundService
  *
  * Samme regnestykke og samme fargekoding som bilskjermen, men bevisst enklere: tre linjer, stor
  * skrift, ingen animasjon. Det skal kunne leses i periferien uten at blikket forlater veien.
+ *
+ * Her, og bare her, kan fartsgrensen settes for hånd. Telefonen er flaten som kan betjenes med
+ * bilen i ro; på bilskjermen ville en rad med knapper vært en invitasjon til å fikle under
+ * kjøring, og fartsgrensen der leses uansett fra det samme [ManualLimit].
  */
 class PhoneSpeedometerActivity : ComponentActivity() {
 
@@ -38,6 +47,7 @@ class PhoneSpeedometerActivity : ComponentActivity() {
     private lateinit var speed: TextView
     private lateinit var headline: TextView
     private lateinit var detail: TextView
+    private lateinit var manualRow: LinearLayout
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -49,6 +59,7 @@ class PhoneSpeedometerActivity : ComponentActivity() {
         speed = big(textSize = 96f)
         headline = big(textSize = 56f)
         detail = big(textSize = 18f, color = Color.rgb(170, 170, 175))
+        manualRow = buildManualRow()
 
         val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -57,6 +68,12 @@ class PhoneSpeedometerActivity : ComponentActivity() {
             addView(speed)
             addView(headline)
             addView(detail)
+            addView(
+                HorizontalScrollView(this@PhoneSpeedometerActivity).apply {
+                    isHorizontalScrollBarEnabled = false
+                    addView(manualRow)
+                }
+            )
         }
 
         ViewCompat.setOnApplyWindowInsetsListener(content) { view, insets ->
@@ -92,6 +109,44 @@ class PhoneSpeedometerActivity : ComponentActivity() {
         LocationForegroundService.stop(this)
     }
 
+    /**
+     * «Auto» først, så de skiltede grensene. NVDB dekker ikke alt - private veger, ny veg,
+     * strekninger der fartsgrenseobjektet mangler - og der viste appen «Ukjent grense» og
+     * sluttet å regne. Et anslag brukeren selv står for er bedre enn ingenting.
+     */
+    private fun buildManualRow(): LinearLayout = LinearLayout(this).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER
+        addView(manualButton(null))
+        ManualLimit.choices.forEach { addView(manualButton(it)) }
+    }
+
+    private fun manualButton(kmt: Int?) = Button(this).apply {
+        text = kmt?.toString() ?: getString(R.string.manual_limit_auto)
+        textSize = 14f
+        minWidth = 0
+        minimumWidth = 0
+        setOnClickListener {
+            ManualLimit.set(kmt)
+            highlightManual()
+        }
+    }
+
+    /** Den valgte grensen må være synlig, ellers vet du ikke hva tallene på skjermen bygger på. */
+    private fun highlightManual() {
+        val active = ManualLimit.kmt.value
+        for (i in 0 until manualRow.childCount) {
+            val button = manualRow.getChildAt(i) as? Button ?: continue
+            val label = button.text.toString()
+            val selected = if (active == null) {
+                label == getString(R.string.manual_limit_auto)
+            } else {
+                label == active.toString()
+            }
+            button.setTextColor(if (selected) Color.WHITE else Color.rgb(130, 130, 135))
+        }
+    }
+
     private fun big(textSize: Float, color: Int = Color.WHITE) = TextView(this).apply {
         this.textSize = textSize
         setTextColor(color)
@@ -99,6 +154,8 @@ class PhoneSpeedometerActivity : ComponentActivity() {
     }
 
     private fun render(reading: SpeedWatch.Reading?) {
+        highlightManual()
+
         if (reading == null) {
             speed.text = "--"
             headline.text = if (GpsSpeedSource.hasLocationPermission(this)) {
@@ -111,37 +168,60 @@ class PhoneSpeedometerActivity : ComponentActivity() {
             return
         }
 
-        val limit = reading.match?.limitKmt
-        speed.text = "${reading.fix.speedKmt.toInt()}"
+        val lost = reading.freshness == FixFreshness.LOST
+        val estimate = reading.estimate
 
-        val accent = when (val e = reading.estimate) {
-            is FineEstimate.NoOffence -> Color.rgb(60, 190, 100)
-            is FineEstimate.UnknownLimit -> Color.rgb(150, 150, 150)
-            is FineEstimate.SimplifiedFine ->
-                if (e.points == 0) Color.rgb(230, 195, 60) else Color.rgb(240, 140, 40)
-            is FineEstimate.Prosecution -> Color.rgb(225, 55, 55)
+        // «--» og ikke «0»: null er en måling, og når signalet er borte har vi ingen. Et nulltall
+        // ville dessuten sett ut som at bilen står stille.
+        speed.text = if (lost) "--" else "${reading.speedKmt.toInt()}"
+
+        val accent = when {
+            lost -> Color.rgb(150, 150, 150)
+            estimate is FineEstimate.NoOffence -> Color.rgb(60, 190, 100)
+            estimate is FineEstimate.UnknownLimit -> Color.rgb(150, 150, 150)
+            estimate is FineEstimate.SimplifiedFine ->
+                if (estimate.points == 0) Color.rgb(230, 195, 60) else Color.rgb(240, 140, 40)
+            estimate is FineEstimate.Prosecution -> Color.rgb(225, 55, 55)
+            else -> Color.rgb(150, 150, 150)
         }
 
-        headline.text = when (val e = reading.estimate) {
-            is FineEstimate.UnknownLimit -> "Ukjent grense"
-            is FineEstimate.NoOffence -> "Ingen bot"
-            is FineEstimate.SimplifiedFine -> "${nok(e.amountNok)} kr"
-            is FineEstimate.Prosecution -> "Anmeldelse"
+        headline.text = when {
+            lost -> "Ingen GPS"
+            estimate is FineEstimate.UnknownLimit -> "Ukjent grense"
+            estimate is FineEstimate.NoOffence -> "Ingen bot"
+            estimate is FineEstimate.SimplifiedFine -> "${nok(estimate.amountNok)} kr"
+            estimate is FineEstimate.Prosecution -> "Anmeldelse"
+            else -> ""
         }
         headline.setTextColor(accent)
 
         detail.text = buildString {
-            append("km/t")
-            if (limit != null) append("  ·  grense $limit")
-            // Gamle data skal se gamle ut, ikke bare være det.
-            if (reading.match?.stale == true) append(" (gammel)")
-            when (val e = reading.estimate) {
-                is FineEstimate.SimplifiedFine -> {
-                    append("  ·  ${e.overKmt} km/t over")
-                    if (e.points > 0) append("  ·  ${e.points} prikker")
+            when (reading.freshness) {
+                // Signalet først: alt annet på skjermen bygger på et fix.
+                FixFreshness.LOST -> {
+                    append("Ingen GPS")
+                    reading.limitKmt?.let { append(" · fartsgrensen $it km/t gjelder fortsatt") }
                 }
-                is FineEstimate.Prosecution -> append("  ·  ${e.overKmt} km/t over")
-                else -> Unit
+                FixFreshness.STALE -> append("Mistet GPS-signalet - venter")
+                FixFreshness.FRESH -> {
+                    append("km/t")
+                    reading.limitKmt?.let { append("  ·  grense $it") }
+                    if (reading.manualLimit) append(" (manuell)")
+                    // Gamle data skal se gamle ut, ikke bare være det.
+                    if (reading.match?.stale == true) append(" (gammel)")
+                    if (!reading.manualLimit && reading.match?.confidence == MatchConfidence.LOW) {
+                        append(" (usikkert vegvalg)")
+                    }
+                    reading.upcoming?.let { append("  ·  snart ${it.limitKmt} om ${it.meters} m") }
+                    when (estimate) {
+                        is FineEstimate.SimplifiedFine -> {
+                            append("  ·  ${estimate.overKmt} km/t over")
+                            if (estimate.points > 0) append("  ·  ${estimate.points} prikker")
+                        }
+                        is FineEstimate.Prosecution -> append("  ·  ${estimate.overKmt} km/t over")
+                        else -> Unit
+                    }
+                }
             }
             if (watch?.ratesStale == true) append("  ·  SATSER UTDATERT")
         }
