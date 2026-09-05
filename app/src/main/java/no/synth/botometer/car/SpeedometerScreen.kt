@@ -12,11 +12,13 @@ import androidx.car.app.model.CarIcon
 import androidx.car.app.model.MessageTemplate
 import androidx.car.app.model.Template
 import androidx.car.app.navigation.model.NavigationTemplate
+import androidx.core.graphics.drawable.IconCompat
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import no.synth.botometer.R
 import no.synth.botometer.alert.SpeedWatch
 import no.synth.botometer.speed.GpsSpeedSource
 import no.synth.botometer.speed.LocationForegroundService
@@ -45,6 +47,15 @@ class SpeedometerScreen(carContext: CarContext) : Screen(carContext), DefaultLif
     )
 
     private var collectJob: Job? = null
+
+    /**
+     * Bilverten vil ha et ikon i handlingsstripa; en knapp med bare tittel avvises av enkelte
+     * verter. Tittelen står ved siden av, for et kryss alene er ikke selvforklarende når det
+     * ligger ved siden av app-ikonet.
+     */
+    private val exitIcon by lazy {
+        CarIcon.Builder(IconCompat.createWithResource(carContext, R.drawable.ic_close)).build()
+    }
 
     init {
         lifecycle.addObserver(this)
@@ -113,9 +124,31 @@ class SpeedometerScreen(carContext: CarContext) : Screen(carContext), DefaultLif
                             }
                             .build()
                     )
+                    .addAction(
+                        Action.Builder()
+                            .setTitle("Avslutt")
+                            .setIcon(exitIcon)
+                            .setOnClickListener { exit() }
+                            .build()
+                    )
                     .build()
             )
             .build()
+    }
+
+    /**
+     * «Avslutt» betyr slutt, ikke «skjul»: posisjonssporingen stoppes og varselet forsvinner.
+     *
+     * Uten en slik knapp var eneste vei ut å starte en annen navigasjonsapp, og da lever
+     * foreground-servicen videre - appen leser posisjon, og det vedvarende varselet står, uten at
+     * noe på skjermen forklarer hvorfor. En app som leser GPS må kunne skrus av der den vises.
+     *
+     * [stopTracking] først: `finish()` river skjermen, og da er det ikke lenger opplagt at
+     * livssyklusen rekker å rydde etter oss.
+     */
+    private fun exit() {
+        stopTracking()
+        finish()
     }
 
     private fun requestPermission() {

@@ -17,6 +17,9 @@
     <!-- Manuell fartsgrense: NVDB dekker ikke private veger, ny veg eller strekninger der
          fartsgrenseobjektet mangler, og der sluttet appen å regne i det hele tatt. -->
     <string name="manual_limit_auto">Auto</string>
+    <!-- «Avslutt» stopper posisjonssporingen, den skjuler ikke bare skjermen. En app som leser
+         GPS må kunne skrus av der den vises. -->
+    <string name="exit">Avslutt</string>
     <string name="clear_crash_log">Tøm krasjloggen</string>
     <string name="always_allow_location">Posisjon: tillat alltid</string>
     <!-- Oppdateringskanal for bøtesatsene. Uten Play må satsene kunne hentes uavhengig av

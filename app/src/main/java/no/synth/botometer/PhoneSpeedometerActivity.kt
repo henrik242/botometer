@@ -74,6 +74,7 @@ class PhoneSpeedometerActivity : ComponentActivity() {
                     addView(manualRow)
                 }
             )
+            addView(exitButton())
         }
 
         ViewCompat.setOnApplyWindowInsetsListener(content) { view, insets ->
@@ -145,6 +146,24 @@ class PhoneSpeedometerActivity : ComponentActivity() {
             }
             button.setTextColor(if (selected) Color.WHITE else Color.rgb(130, 130, 135))
         }
+    }
+
+    /**
+     * «Avslutt» betyr slutt, ikke «gå tilbake»: posisjonssporingen stoppes og varselet forsvinner.
+     *
+     * Tilbake-knappen gjør riktignok det samme via [onStop], men det er ikke synlig noe sted, og
+     * en app som leser GPS og viser et vedvarende varsel må kunne skrus av der den vises - ikke
+     * bare forlates og håpes på.
+     */
+    private fun exitButton() = Button(this).apply {
+        text = getString(R.string.exit)
+        textSize = 14f
+        setOnClickListener { exit() }
+    }
+
+    private fun exit() {
+        LocationForegroundService.stop(this)
+        finish()
     }
 
     private fun big(textSize: Float, color: Int = Color.WHITE) = TextView(this).apply {
