@@ -22,11 +22,23 @@ data class SpeedLimitSegment(
 )
 
 /**
+ * En strekning med vedtatt motorvegstatus. Bare geometrien er interessant: spørsmålet er «er vi
+ * på en motorveg?», ikke hvilken.
+ *
+ * Motortrafikkveg er IKKE motorveg i denne sammenhengen - satsen for 36-40 km/t over i en
+ * 90-sone gjelder bare motorveg - så de filtreres bort i parsingen.
+ */
+data class MotorwaySegment(
+    val nvdbId: Long,
+    val line: List<LatLon>,
+)
+
+/**
  * @param complete false betyr at vi traff sidegrensen og at datasettet er ufullstendig.
  * Uten dette flagget ville manglende fartsgrenser sett ut som «her finnes det ingen».
  */
-data class TileData(
-    val segments: List<SpeedLimitSegment>,
+data class TileData<T>(
+    val segments: List<T>,
     val complete: Boolean,
 )
 
@@ -47,6 +59,7 @@ class NvdbException(
  * klienter identifiserer seg med X-Client - uten den risikerer man å bli strupet.
  *
  * Vegobjekttype 105 = Fartsgrense. Egenskap 2021 = Fartsgrense (heltall, km/t).
+ * Vegobjekttype 595 = Motorveg. Egenskap 5378 = Motorvegtype (7355 Motorveg, 7356 Motortrafikkveg).
  * segmentering=true gir oss geometri splittet på veglenker, som er det vi vil matche mot.
  */
 class NvdbClient(
@@ -57,14 +70,29 @@ class NvdbClient(
 ) {
     private val json = Json { ignoreUnknownKeys = true }
 
-    suspend fun speedLimitsIn(bbox: BBox): TileData = withContext(Dispatchers.IO) {
-        val out = ArrayList<SpeedLimitSegment>()
+    suspend fun speedLimitsIn(bbox: BBox): TileData<SpeedLimitSegment> =
+        fetchAll(bbox, TYPE_FARTSGRENSE, ::parseSpeedLimits)
+
+    /**
+     * Motorvegstrekninger i ruta. Hentes bare når den matchede fartsgrensen er 90 eller høyere -
+     * det er den eneste satsen som skiller på vegtype - så den doble NVDB-trafikken påløper
+     * ikke i en 50-sone.
+     */
+    suspend fun motorwaysIn(bbox: BBox): TileData<MotorwaySegment> =
+        fetchAll(bbox, TYPE_MOTORVEG, ::parseMotorways)
+
+    private suspend fun <T> fetchAll(
+        bbox: BBox,
+        type: Int,
+        parse: (JsonObject) -> List<T>,
+    ): TileData<T> = withContext(Dispatchers.IO) {
+        val out = ArrayList<T>()
         var start: String? = null
 
         // NVDB paginerer alle treff over sidestørrelsen. Uten dette mistet vi fartsgrenser
         // stille i tette byruter - nettopp der de varierer mest.
         for (page in 0 until MAX_PAGES) {
-            val p = fetchPage(bbox, start)
+            val p = fetchPage(bbox, type, start, parse)
             out += p.segments
 
             // Et tomt `neste` er IKKE det vanlige stoppsignalet: NVDB oppgir `neste.start` også
@@ -92,16 +120,21 @@ class NvdbClient(
      * om det er mer å hente - ikke hvor mange vi klarte å tolke, ellers ville en side med bare
      * uparsebare objekter sett ut som slutten.
      */
-    private data class Page(
-        val segments: List<SpeedLimitSegment>,
+    private data class Page<T>(
+        val segments: List<T>,
         val next: String?,
         val rawCount: Int,
     )
 
-    private fun fetchPage(bbox: BBox, start: String?): Page {
+    private fun <T> fetchPage(
+        bbox: BBox,
+        type: Int,
+        start: String?,
+        parse: (JsonObject) -> List<T>,
+    ): Page<T> {
         val url = buildString {
             append(baseUrl)
-            append("/vegobjekter/api/v4/vegobjekter/$TYPE_FARTSGRENSE")
+            append("/vegobjekter/api/v4/vegobjekter/$type")
             append("?kartutsnitt=${bbox.west},${bbox.south},${bbox.east},${bbox.north}")
             append("&srid=4326")
             append("&inkluder=egenskaper,geometri,lokasjon")
@@ -151,7 +184,7 @@ class NvdbClient(
 
         val root = json.parseToJsonElement(body).jsonObject
         val objekter = root["objekter"]?.jsonArray.orEmpty()
-        val segments = objekter.flatMap { parseSegments(it.jsonObject) }
+        val segments = objekter.flatMap { parse(it.jsonObject) }
 
         // Vi følger `start`-tokenet, ikke `neste.href`. Href-en i responsen har historisk pekt
         // på gamle stier (uten /api/v4/), så det er tryggere å bygge URL-en selv.
@@ -176,24 +209,52 @@ class NvdbClient(
      * fantomlinjer spente derfor på kryss og tvers over hovedvegen, og lot en lav grense vinne
      * på avstand mot den riktige høye.
      */
-    private fun parseSegments(obj: JsonObject): List<SpeedLimitSegment> {
+    private fun parseSpeedLimits(obj: JsonObject): List<SpeedLimitSegment> {
         val id = obj["id"]?.jsonPrimitive?.longOrNullSafe() ?: return emptyList()
 
-        val limit = obj["egenskaper"]?.jsonArray.orEmpty()
-            .map { it.jsonObject }
-            .firstOrNull { it["id"]?.jsonPrimitive?.intOrNullSafe() == EGENSKAP_FARTSGRENSE }
+        val limit = property(obj, EGENSKAP_FARTSGRENSE)
             ?.get("verdi")?.jsonPrimitive?.intOrNullSafe()
             ?: return emptyList()
-
-        val wkt = obj["geometri"]?.jsonObject?.get("wkt")?.jsonPrimitive?.contentOrNull
-            ?: return emptyList()
-        val lines = Wkt.parseLines(wkt)
 
         val roadRef = obj["lokasjon"]?.jsonObject
             ?.get("vegsystemreferanser")?.jsonArray?.firstOrNull()
             ?.jsonObject?.get("kortform")?.jsonPrimitive?.contentOrNull
 
-        return lines.map { SpeedLimitSegment(id, limit, it, roadRef) }
+        return lines(obj).map { SpeedLimitSegment(id, limit, it, roadRef) }
+    }
+
+    /**
+     * Vegobjekttype 595 heter «Motorveg» og dekker «strekninger som har vedtatt status
+     * motorveg» - altså begge slag. Egenskap 5378 skiller dem, og det er bare ekte motorveg
+     * som gir satsen for 36-40 km/t over.
+     *
+     * Vi ekskluderer bare det som *eksplisitt* er motortrafikkveg, i stedet for å kreve at
+     * noe eksplisitt er motorveg. NVDB oppgir enum-egenskaper med både kode (`enum_id`) og
+     * tekst (`verdi`), og skulle den ene formen mangle eller endre seg, er «objekt av typen
+     * Motorveg regnes som motorveg» det som fortsatt stemmer med typedefinisjonen.
+     */
+    private fun parseMotorways(obj: JsonObject): List<MotorwaySegment> {
+        val id = obj["id"]?.jsonPrimitive?.longOrNullSafe() ?: return emptyList()
+
+        val type = property(obj, EGENSKAP_MOTORVEGTYPE)
+        val enumId = type?.get("enum_id")?.jsonPrimitive?.intOrNullSafe()
+        val text = type?.get("verdi")?.jsonPrimitive?.contentOrNull
+        val motortrafikkveg = enumId == ENUM_MOTORTRAFIKKVEG ||
+            text?.startsWith("Motortrafikk", ignoreCase = true) == true
+        if (motortrafikkveg) return emptyList()
+
+        return lines(obj).map { MotorwaySegment(id, it) }
+    }
+
+    private fun property(obj: JsonObject, id: Int): JsonObject? =
+        obj["egenskaper"]?.jsonArray.orEmpty()
+            .map { it.jsonObject }
+            .firstOrNull { it["id"]?.jsonPrimitive?.intOrNullSafe() == id }
+
+    private fun lines(obj: JsonObject): List<List<LatLon>> {
+        val wkt = obj["geometri"]?.jsonObject?.get("wkt")?.jsonPrimitive?.contentOrNull
+            ?: return emptyList()
+        return Wkt.parseLines(wkt)
     }
 
     companion object {
@@ -201,6 +262,10 @@ class NvdbClient(
         const val BASE = "https://nvdbapiles.atlas.vegvesen.no"
         const val TYPE_FARTSGRENSE = 105
         const val EGENSKAP_FARTSGRENSE = 2021
+        const val TYPE_MOTORVEG = 595
+        const val EGENSKAP_MOTORVEGTYPE = 5378
+        const val ENUM_MOTORVEG = 7355
+        const val ENUM_MOTORTRAFIKKVEG = 7356
         private const val PAGE_SIZE = 1000
 
         /** Nok til å få med NVDBs forklaring, lite nok til å ikke fylle diagnostikkflaten. */
