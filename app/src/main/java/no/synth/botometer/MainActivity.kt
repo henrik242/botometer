@@ -1,6 +1,7 @@
 package no.synth.botometer
 
 import android.Manifest
+import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import android.view.View
@@ -48,6 +49,13 @@ class MainActivity : ComponentActivity() {
             setOnClickListener { refreshRates(this) }
         }
 
+        val speedometer = Button(this).apply {
+            text = getString(R.string.open_phone_speedometer)
+            setOnClickListener {
+                startActivity(Intent(this@MainActivity, PhoneSpeedometerActivity::class.java))
+            }
+        }
+
         val permissions = Button(this).apply {
             text = getString(R.string.grant_permissions)
             setOnClickListener { askPermissions() }
@@ -56,6 +64,7 @@ class MainActivity : ComponentActivity() {
         val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             addView(status)
+            addView(speedometer)
             addView(refresh)
             addView(permissions)
         }

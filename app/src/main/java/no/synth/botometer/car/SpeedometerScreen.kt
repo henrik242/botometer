@@ -18,11 +18,10 @@ import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.launch
+import no.synth.botometer.BotometerApp
 import no.synth.botometer.R
 import no.synth.botometer.fine.FineCalculator
 import no.synth.botometer.fine.FineTableRepository
-import no.synth.botometer.limit.NvdbClient
-import no.synth.botometer.limit.SpeedLimitRepository
 import no.synth.botometer.speed.GpsSpeedSource
 import no.synth.botometer.speed.LocationForegroundService
 import no.synth.botometer.speed.SpeedFeed
@@ -47,10 +46,9 @@ class SpeedometerScreen(carContext: CarContext) : Screen(carContext), DefaultLif
     private val calculator = FineCalculator(tableStatus.table)
     private val renderer = SpeedometerRenderer(carContext, calculator, ratesStale = tableStatus.stale)
 
-    private val repo = SpeedLimitRepository(
-        nvdb = NvdbClient(clientName = carContext.getString(R.string.nvdb_client_id)),
-        scope = lifecycleScope,
-    )
+    // Delt med telefonskjermen og fartsvarslene. To repoer ville gitt to rute-cacher og dobbelt
+    // så mange kall mot NVDB for de samme rutene.
+    private val repo = (carContext.applicationContext as BotometerApp).speedLimits
 
     private var collectJob: Job? = null
 

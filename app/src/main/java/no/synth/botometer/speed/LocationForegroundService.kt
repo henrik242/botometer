@@ -20,6 +20,8 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
 import no.synth.botometer.MainActivity
+import no.synth.botometer.alert.SpeedWatch
+import no.synth.botometer.alert.SpeedingAlerts
 import no.synth.botometer.R
 
 /**
@@ -37,6 +39,7 @@ class LocationForegroundService : Service() {
 
     private val scope = CoroutineScope(SupervisorJob())
     private var job: Job? = null
+    private var alertJob: Job? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -63,6 +66,17 @@ class LocationForegroundService : Service() {
             }
         }
 
+        // Varslene hører hjemme her, ikke på bilskjermen: servicen lever videre når Maps
+        // overtar skjermen, og det er nettopp da et varsel er den eneste veien fram.
+        if (alertJob == null) {
+            val alerts = SpeedingAlerts(applicationContext)
+            alertJob = scope.launch {
+                SpeedWatch(this@LocationForegroundService).readings()
+                    .catch { Log.w(TAG, "Fartsvarslene stoppet: ${it.message}") }
+                    .collect { alerts.onReading(it) }
+            }
+        }
+
         // START_NOT_STICKY: mister vi tilgang eller blir drept, skal vi ikke gjenoppstå av oss selv.
         // Skjermen i bilen er den som bestemmer om vi skal kjøre.
         return START_NOT_STICKY
@@ -70,6 +84,7 @@ class LocationForegroundService : Service() {
 
     override fun onDestroy() {
         job = null
+        alertJob = null
         scope.cancel()
         SpeedFeed.clear()
         super.onDestroy()

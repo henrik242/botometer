@@ -9,6 +9,11 @@
     <string name="nvdb_client_id" translatable="false">botometer-android</string>
     <string name="refresh_rates">Oppdater satser</string>
     <string name="grant_permissions">Gi tilganger</string>
+    <!-- Egen kanal, og med vilje IMPORTANCE_HIGH: dette er det ene varselet som skal sees.
+         Posisjonsvarselet er IMPORTANCE_LOW nettopp for å ikke bli sett. -->
+    <string name="channel_alerts">Fartsvarsler</string>
+    <string name="open_phone_speedometer">Vis speedometer på telefonen</string>
+    <string name="phone_speedometer_title">Speedometer</string>
     <!-- Oppdateringskanal for bøtesatsene. Uten Play må satsene kunne hentes uavhengig av
          APK-versjonen, ellers kjører gamle installasjoner utdaterte tall i stillhet. -->
     <string name="satser_url" translatable="false">https://raw.githubusercontent.com/henrik242/botometer/main/satser/botesatser.json</string>
