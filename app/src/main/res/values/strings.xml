@@ -24,6 +24,9 @@
     <!-- Hele diagnostikkrapporten til utklippstavla. Å markere fem skjermhøyder med tekst på en
          telefon er en øvelse ingen orker å gjøre riktig. -->
     <string name="copy_diagnostics">Kopier diagnostikk</string>
+    <!-- Samme varsel som en ekte overtredelse, på kommando. Ellers krever hver runde med
+         feilsøking av bilvarslene at noen kjører for fort med bilen tilkoblet. -->
+    <string name="send_test_alert">Send testvarsel</string>
     <string name="always_allow_location">Posisjon: tillat alltid</string>
     <!-- Oppdateringskanal for bøtesatsene. Uten Play må satsene kunne hentes uavhengig av
          APK-versjonen, ellers kjører gamle installasjoner utdaterte tall i stillhet. -->

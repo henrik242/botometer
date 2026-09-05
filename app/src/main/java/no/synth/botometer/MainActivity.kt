@@ -22,6 +22,7 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
+import no.synth.botometer.alert.SpeedingAlerts
 import no.synth.botometer.fine.FineTableRepository
 import no.synth.botometer.fine.TableStatus
 import no.synth.botometer.speed.GpsSpeedSource
@@ -70,6 +71,16 @@ class MainActivity : ComponentActivity() {
             setOnClickListener { copyDiagnostics() }
         }
 
+        // Uten denne krevde hver runde med feilsøking av bilvarslene at noen kjørte for fort
+        // med bilen tilkoblet. Nå er det ett trykk fra førersetet med tenningen på.
+        val testAlert = Button(this).apply {
+            text = getString(R.string.send_test_alert)
+            setOnClickListener {
+                SpeedingAlerts(this@MainActivity).sendTestAlert()
+                render()
+            }
+        }
+
         val alwaysAllow = Button(this).apply {
             text = getString(R.string.always_allow_location)
             setOnClickListener { openLocationSettings() }
@@ -99,6 +110,7 @@ class MainActivity : ComponentActivity() {
             orientation = LinearLayout.VERTICAL
             addView(status)
             addView(copy)
+            addView(testAlert)
             addView(alwaysAllow)
             addView(clearCrash)
             addView(speedometer)

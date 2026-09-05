@@ -429,6 +429,30 @@ som leser GPS må kunne skrus av der den vises.
 varslene virker uansett hvem som eier bilskjermen. Varselet er `IMPORTANCE_HIGH` og utvidet med
 `CarAppExtender` - uten den vises ingen varsler på bilskjermen i det hele tatt.
 
+**Og det skal IKKE ha `CATEGORY_NAVIGATION`.** Det hadde det, og det var grunnen til at varselet
+kom opp på telefonen hver gang og aldri i bilen. Verten behandler et navigasjonsvarsel fra en
+navigasjonsapp som en sving-for-sving-melding, og de har sin egen regel ([`CarAppExtender`,
+avsnittet «Navigation»](https://developer.android.com/reference/androidx/car/app/notification/CarAppExtender)):
+
+> The notification will not be displayed if the navigation app is not the currently active
+> navigation app, or if the app is already displaying routing information in the navigation
+> template.
+
+Botometer er alltid i én av de to tilstandene. Eier Maps skjermen, er vi ikke den aktive
+navigasjonsappen. Eier vi skjermen, tegner vi i `NavigationTemplate`. Begge grenene undertrykker
+varselet, så det kunne aldri vises - mens telefonen viste det hver gang, siden regelen er vertens
+og ikke systemets. Kategorien så «bil-riktig» ut og var det motsatte: det er `CarAppExtender` som
+gjør et varsel synlig i bilen, ikke kategorien.
+
+Varselet postes med `CarNotificationManager.notify`, ikke `NotificationManagerCompat.notify`.
+Dokumentasjonen sier det rett ut. På projisert Android Auto gjør de to i praksis det samme når
+varselet allerede er utvidet, så det alene var ikke feilen - men på Automotive OS er det det som
+gjør at varselet havner riktig.
+
+**«Send testvarsel»** i telefon-appen poster nøyaktig det samme varselet på kommando. Uten den
+krevde hver runde med feilsøking av bilvarslene at noen kjørte for fort med bilen tilkoblet og så
+husket hva som skjedde - tre runder på den måten er tre kjøreturer.
+
 **Det sto her lenge før det var sant.** Sporingen fulgte skjermene: `SpeedometerScreen.onStop`
 stoppet tjenesten, og verten stopper skjermen vår i det en annen navigasjonsapp tar over
 bilskjermen. GPS-en døde altså - og med den fartsvarslene - i nøyaktig det øyeblikket varselet
