@@ -180,17 +180,6 @@ class SpeedometerRenderer(
             FixFreshness.FRESH -> Unit
         }
 
-        // En lavere sone rett foran er tidskritisk på en helt annen måte enn detaljene om
-        // dagens bot, så den går foran dem.
-        r.upcoming?.let { u ->
-            val cost = when (val e = u.estimate) {
-                is FineEstimate.SimplifiedFine -> "${nok.format(e.amountNok)} kr"
-                is FineEstimate.Prosecution -> "anmeldelse"
-                else -> null
-            }
-            if (cost != null) return "Snart ${u.limitKmt} km/t om ${u.meters} m · $cost i denne farten"
-        }
-
         return when (val estimate = r.estimate) {
             is FineEstimate.UnknownLimit ->
                 if (r.match == null) "Ingen NVDB-data her" else "Fartsgrense mangler i NVDB"
@@ -251,20 +240,5 @@ class SpeedometerRenderer(
 
         signText.textSize = radius * 0.95f
         canvas.drawText(r.limitKmt?.toString() ?: "?", cx, cy + signText.textSize * 0.36f, signText)
-
-        // Den lavere grensen foran, i et lite skilt under det store. Bare tall og piktogram -
-        // teksten som forklarer den står på linje 3.
-        val ahead = r.upcoming?.limitKmt ?: return
-        val smallRadius = radius * 0.62f
-        val ay = cy + radius + smallRadius + unit * 0.25f
-
-        signFill.alpha = 200
-        signRing.alpha = 200
-        signText.alpha = 230
-        signRing.strokeWidth = smallRadius * 0.22f
-        canvas.drawCircle(cx, ay, smallRadius, signFill)
-        canvas.drawCircle(cx, ay, smallRadius - signRing.strokeWidth / 2, signRing)
-        signText.textSize = smallRadius * 0.95f
-        canvas.drawText("$ahead", cx, ay + signText.textSize * 0.36f, signText)
     }
 }

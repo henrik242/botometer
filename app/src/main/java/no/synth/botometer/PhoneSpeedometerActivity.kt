@@ -212,7 +212,6 @@ class PhoneSpeedometerActivity : ComponentActivity() {
                     if (!reading.manualLimit && reading.match?.confidence == MatchConfidence.LOW) {
                         append(" (usikkert vegvalg)")
                     }
-                    reading.upcoming?.let { append("  ·  snart ${it.limitKmt} om ${it.meters} m") }
                     when (estimate) {
                         is FineEstimate.SimplifiedFine -> {
                             append("  ·  ${estimate.overKmt} km/t over")

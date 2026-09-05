@@ -31,9 +31,6 @@ data class LimitMatch(
      * det er den eneste satsen som skiller på vegtype.
      */
     val motorway: Boolean? = null,
-    /** Fartsgrensen et stykke lenger fram, tatt med bare når den er LAVERE enn den du har nå. */
-    val aheadLimitKmt: Int? = null,
-    val aheadMeters: Int? = null,
 )
 
 /**
@@ -148,7 +145,7 @@ class SpeedLimitRepository(
             distanceMeters = chosen.distanceMeters,
             confidence = confidence,
             motorway = motorway,
-        ).withLookAhead(position, headingDeg, speedKmt, window)
+        )
 
         lastLimitKmt = match.limitKmt
         lastGood = match
@@ -305,30 +302,6 @@ class SpeedLimitRepository(
             ?: return best   // den gamle grensen finnes ikke lenger her; da er byttet ekte
 
         return if (best.score <= held.score - SWITCH_MARGIN_METERS) best else held
-    }
-
-    /**
-     * Fartsgrensen et lite stykke lenger fram, matchet i ruter vi allerede har i minnet -
-     * altså uten et eneste ekstra NVDB-kall.
-     *
-     * Bare når den er LAVERE enn den du har nå. Da er den en advarsel om en 80-til-50-overgang
-     * som ellers kommer som en overraskelse i det du passerer skiltet. En høyere grense lenger
-     * fram er ingen nyhet, og en grense som vises før den gjelder ville vært direkte feil - så
-     * den skiltede grensen på skjermen er fortsatt den som gjelder her og nå.
-     */
-    private fun LimitMatch.withLookAhead(
-        position: LatLon,
-        headingDeg: Double?,
-        speedKmt: Double,
-        windowMeters: Double,
-    ): LimitMatch {
-        if (headingDeg == null || speedKmt < MIN_LOOKAHEAD_SPEED_KMT) return this
-        val meters = (speedKmt / 3.6 * LOOKAHEAD_SECONDS).coerceAtMost(MAX_LOOKAHEAD_METERS)
-        val ahead = Geo.project(position, headingDeg, meters)
-        val segments = tiles[keyOf(ahead)] ?: return this
-        val limit = matchAt(segments, ahead, headingDeg, speedKmt, windowMeters)
-            .best?.segment?.limitKmt ?: return this
-        return if (limit < limitKmt) copy(aheadLimitKmt = limit, aheadMeters = meters.toInt()) else this
     }
 
     /**
@@ -502,11 +475,5 @@ class SpeedLimitRepository(
 
         /** Motorvegsatsen finnes bare fra 90-sonen og opp. Under det er oppslaget bortkastet. */
         const val MOTORWAY_RELEVANT_FROM_KMT = 90
-
-        const val LOOKAHEAD_SECONDS = 8.0
-        const val MAX_LOOKAHEAD_METERS = 400.0
-
-        /** Under dette står du praktisk talt stille, og «snart 50» er ingen nyhet. */
-        const val MIN_LOOKAHEAD_SPEED_KMT = 15.0
     }
 }

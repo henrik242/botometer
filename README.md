@@ -6,11 +6,10 @@ risiko for tap av førerrett, basert på gjeldende fartsgrense fra NVDB.
 ```
 ┌──────────────────────────────┐
 │            97          ⃝80  │   fart (km/t) + skiltet fartsgrense
-│           km/t          ⃝50  │   og den lavere sonen rett foran
+│           km/t               │
 │                              │
 │         7 450 kr             │   forenklet forelegg
-│ Snart 50 km/t om 190 m ·     │
-│      13 450 kr i denne farten│
+│  17 km/t over · 2 prikker    │
 │   EV6 S75D1 · satser 2026… │
 └──────────────────────────────┘
 ```
@@ -278,13 +277,20 @@ segmenter med ulik fartsgrense like nær, er treffet et myntkast - og et myntkas
 som et faktum på en bilskjerm. Tilliten kommer av avstanden, avstanden opp til nærmeste kandidat
 med en *annen* grense, og GPS-nøyaktigheten, og et lavt tall demper skiltet på skjermen.
 
-**Hvorfor se framover:** ruta foran bilen ligger allerede i minnet fra forhåndslastingen, så
-matchingen kan kjøres en gang til på et punkt ~8 sekunder fram (maks 400 m) uten et eneste ekstra
-NVDB-kall. Bare når grensen der framme er **lavere** enn den du har: 80-til-50 inn i et tettsted
-er en overraskelse som koster penger, mens en høyere grense lenger fram er ingen nyhet. Skiltet
-på skjermen viser fortsatt grensen som gjelder her og nå - en grense som vises før den gjelder
-ville vært direkte feil - men det kommer et lite varselskilt under, og et varsel om den blir en
-bot i farten du har.
+**Hvorfor det ikke varsles om sonen som kommer:** det ble prøvd, og det var feil hele tiden.
+Matchingen ble kjørt en gang til på et punkt ~8 sekunder fram, ekstrapolert i rett linje fra
+kursen, og alt innenfor 30 meter av det punktet var en kandidat. Ingenting sjekket at treffet lå
+på *samme veg*. I et tettsted er 30-sonene nettopp sidegatene, så punktet fant en av dem hver
+gang bilen nærmet seg et kryss - og «snart 30 km/t» sto på skjermen på en 80-veg.
+
+Feilen er den samme som fantomlinjene mellom delstrekninger, i ny drakt: uten en sjekk på at
+kandidaten hører til vegen du faktisk kjører på, vinner de lave grensene systematisk, fordi det
+er de tette som ligger overalt. Et varsel som er feil på en bilskjerm er verre enn ingen varsel,
+og det slutter uansett å bli lest.
+
+Skal det gjøres på ordentlig, må det følge vegen framover - videre langs geometrien til segmentet
+du er matchet mot, eller gjennom veglenke-topologien i NVDB - ikke et punkt i luften. Det er en
+større jobb enn den ser ut som, og til den er gjort er dette bevisst ute.
 
 **Hvorfor manuell fartsgrense:** NVDB dekker ikke alt. På private veger, ny veg og strekninger
 der fartsgrenseobjektet mangler viste appen «Ukjent fartsgrense» og sluttet å regne - altså
@@ -328,10 +334,6 @@ Etter review-runden står følgende igjen som uløst. Det viktigste først:
   (`SpeedLimitMatchingTest`, `MotorwayLookupTest`) - `NvdbClient.baseUrl` peker på en lokal
   server - men `now`-parameteren er ikke tatt i bruk av noen test, så backoff og negativ cache
   er bare lest, ikke kjørt.
-- **Framoverblikket bruker matchevinduet til dagens posisjon.** Punktet ~8 sekunder fram er
-  ekstrapolert i rett linje fra kursen, så i en sving peker det utenfor vegen og treffer ingenting.
-  Det gir et manglende varsel, ikke et falskt, men i svingete terreng er funksjonen omtrent uten
-  effekt.
 - **Wkt-sanity-sjekken bruker breddegrad 57-72**, så Svalbard forkastes stille.
 
 ### Datakvalitet
@@ -415,7 +417,7 @@ Derfor finnes appen på tre flater i stedet:
 |---|---|---|
 | **Bilskjermen** | Botometer er valgt i bilen | Speedometeret, tegnet på `NavigationTemplate` |
 | **Telefonen** | Maps eier bilskjermen | Samme tall, stor skrift, skjermen holdes våken |
-| **Varsel** | Alltid, i bakgrunnen | Heads-up når farten krysser inn i et nytt bøtenivå, og når en lavere sone rett foran vil koste deg noe |
+| **Varsel** | Alltid, i bakgrunnen | Heads-up når farten krysser inn i et nytt bøtenivå |
 
 `LocationForegroundService` eier GPS-abonnementet og lever videre når Maps overtar skjermen, så
 varslene virker uansett hvem som eier bilskjermen. Varselet er `IMPORTANCE_HIGH` og utvidet med
@@ -426,12 +428,6 @@ det er støy, og Google er tydelig på at heads-up er forbeholdt noe «drive-cri
 sensitive, and actionable». At beløpet nettopp gikk fra 4 800 til 7 450 kroner er det. At du
 fortsatt ligger 17 over er det ikke. `FineHysteresis` demper vippingen på selve trinngrensa, og
 `AlertPolicy` legger et minste intervall mellom varsler oppå det.
-
-**Det andre varselet er sonen som kommer.** `UpcomingLimitPolicy` sier fra når fartsgrensen litt
-lenger fram er lavere *og* farten du allerede har ville kostet deg noe der - 80-til-50 inn i et
-tettsted. Er farten lovlig også der framme, sies ingenting; et varsel om noe som ikke koster deg
-noe er akkurat den støyen som gjør at de ekte varslene ikke blir lest. Det har sin egen varsel-id,
-så en beskjed om det som kommer ikke sletter beskjeden om det som gjelder nå.
 
 De tre flatene deler ett `SpeedLimitRepository`, opprettet i `BotometerApp`. Rute-cachen ligger i
 instansen, så tre repoer ville betydd tre cacher og tre ganger så mange kall mot NVDB for de
