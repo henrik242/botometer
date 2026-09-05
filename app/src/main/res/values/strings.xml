@@ -21,6 +21,9 @@
          GPS må kunne skrus av der den vises. -->
     <string name="exit">Avslutt</string>
     <string name="clear_crash_log">Tøm krasjloggen</string>
+    <!-- Hele diagnostikkrapporten til utklippstavla. Å markere fem skjermhøyder med tekst på en
+         telefon er en øvelse ingen orker å gjøre riktig. -->
+    <string name="copy_diagnostics">Kopier diagnostikk</string>
     <string name="always_allow_location">Posisjon: tillat alltid</string>
     <!-- Oppdateringskanal for bøtesatsene. Uten Play må satsene kunne hentes uavhengig av
          APK-versjonen, ellers kjører gamle installasjoner utdaterte tall i stillhet. -->
