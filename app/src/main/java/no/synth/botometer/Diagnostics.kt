@@ -16,6 +16,8 @@ object Diagnostics {
     private val lastMatchInfo = AtomicReference<String?>(null)
     private val lastMissInfo = AtomicReference<String?>(null)
     private val lastCandidates = AtomicReference<String?>(null)
+    private val lastMotorwayInfo = AtomicReference<String?>(null)
+    private val lastAccuracyInfo = AtomicReference<String?>(null)
     private val locationServiceError = AtomicReference<String?>(null)
     private val nvdbRequests = AtomicLong(0)
     private val nvdbFailures = AtomicLong(0)
@@ -66,8 +68,39 @@ object Diagnostics {
         lastCandidates.set(lines.takeIf { it.isNotEmpty() }?.joinToString("\n  "))
     }
 
-    fun matched(limitKmt: Int, distanceMeters: Double, roadRef: String?) {
-        lastMatchInfo.set("$limitKmt km/t, ${"%.1f".format(distanceMeters)} m unna" + (roadRef?.let { " · $it" } ?: ""))
+    fun matched(
+        limitKmt: Int,
+        distanceMeters: Double,
+        roadRef: String?,
+        confidence: String,
+        motorway: Boolean?,
+    ) {
+        lastMatchInfo.set(
+            buildString {
+                append("$limitKmt km/t, ${"%.1f".format(distanceMeters)} m unna")
+                roadRef?.let { append(" · $it") }
+                append(" · tillit $confidence")
+                motorway?.let { append(if (it) " · motorveg" else " · ikke motorveg") }
+            }
+        )
+    }
+
+    /**
+     * Vegobjekttype 595 hentes bare i 90-soner og over. Står den på 0 segmenter der du VET at
+     * du kjørte motorveg, er det enten dekningshull i NVDB eller en gal antakelse om hvordan
+     * Motorvegtype kodes - og satsen for 36-40 km/t over henger på svaret.
+     */
+    fun motorwayTileLoaded(segments: Int, key: String) {
+        nvdbRequests.incrementAndGet()
+        lastMotorwayInfo.set("$key: $segments motorvegsegmenter")
+    }
+
+    /**
+     * Et fix på ±60 m kan ikke skille to parallelle veger, og matchingen hoppes over. Uten denne
+     * linja ser det ut som om NVDB mangler data, når det er GPS-en som ikke ser noe.
+     */
+    fun poorAccuracy(meters: Double) {
+        lastAccuracyInfo.set("hoppet over matching: GPS ±${"%.0f".format(meters)} m")
     }
 
     fun summary(): String = buildString {
@@ -86,6 +119,8 @@ object Diagnostics {
         appendLine("Siste bom: ${lastMissInfo.get() ?: "ingen"}")
         appendLine("Kandidater:")
         appendLine("  ${lastCandidates.get() ?: "ingen ennå"}")
+        appendLine("Motorveg (595): ${lastMotorwayInfo.get() ?: "ikke slått opp (bare i 90-soner)"}")
+        lastAccuracyInfo.get()?.let { appendLine("GPS-nøyaktighet: $it") }
         appendLine("Siste feil: ${lastNvdbError.get() ?: "ingen"}")
     }
 }
