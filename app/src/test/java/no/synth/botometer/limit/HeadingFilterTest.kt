@@ -15,6 +15,8 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Before
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
 
 /**
  * En veg er en linje, ikke en pil.
@@ -25,7 +27,12 @@ import org.junit.Test
  *
  * Målt i bil: EV18 lå 5 meter unna med Δ173° og ble forkastet, mens en kommunal veg 15 meter unna
  * med Δ27° vant. Appen viste 40 der det var 50.
+ *
+ * Robolectric selv om testen ikke rører noe Android-UI: rute-cachen er en `android.util.LruCache`,
+ * og med `isReturnDefaultValues` er den en stubb på ren JVM. `put` gjør da ingenting, ruta blir
+ * aldri cachet, og testen venter i evighet på et treff som ikke kan komme.
  */
+@RunWith(RobolectricTestRunner::class)
 class HeadingFilterTest {
 
     private lateinit var server: MockWebServer
