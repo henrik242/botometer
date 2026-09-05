@@ -38,8 +38,18 @@ i bilen» nedenfor.
 **2. GPS-abonnementet eies av en foreground service.** Fra Android 10 får en app ikke posisjon når
 den ikke er i forgrunnen, og en `CarAppService` gir ikke forgrunnsstatus - appen ville fått fart de
 første sekundene og deretter stillstand så snart telefonskjermen slukket. `LocationForegroundService`
-(type `location`) eier abonnementet og publiserer til `SpeedFeed`; skjermen leser derfra. Det er
-alternativet til `ACCESS_BACKGROUND_LOCATION`, som er strengere regulert i Play og unødvendig her.
+(type `location`) eier abonnementet og publiserer til `SpeedFeed`; skjermen leser derfra.
+
+`ACCESS_BACKGROUND_LOCATION` var lenge bevisst utelatt her, med foreground service som «riktigere
+design». Det holdt ikke. Fra Android 14 er posisjon gitt som «mens appen er i bruk» en
+*forgrunnstillatelse*: appen får bare starte en `location`-tjeneste mens den selv er i forgrunnen,
+og bilskjermen teller ikke - telefon-appen er i bakgrunnen mens speedometeret vises i bilen.
+Resultatet var en `SecurityException` som tok hele appen med seg. De to tingene løser altså ikke
+det samme problemet, og foreground-servicen er fortsatt nødvendig; den er bare ikke nok.
+
+Tillatelsen koster personvern, og det skal stå: appen kan lese posisjon uten at noe er synlig på
+telefonen. Motvekten er at foreground-servicen alltid viser et varsel så lenge sporingen er på, og
+at posisjonen fortsatt aldri forlater telefonen - se «Personvern».
 
 **3. Farten kommer fra GPS, ikke fra bilen.** `CarInfo.addSpeedListener` finnes, men krever
 `com.google.android.gms.permission.CAR_SPEED` og returnerer `STATUS_UNAVAILABLE` på de fleste
@@ -214,6 +224,10 @@ grenseland. Fradraget ligger i `Tolerance` i satsfilen, ikke i koden.
 
 Etter review-runden står følgende igjen som uløst. Det viktigste først:
 
+- **«Tillat alltid» må settes for hånd.** Fra Android 11 finnes ikke valget i
+  tillatelsesdialogen, bare på appens innstillingsside, så appen kan bare sende brukeren dit.
+  Er den ikke satt, får bilskjermen ingen fart - telefon-appen skiller mellom «gitt» og «gitt i
+  forgrunnen» og sier fra.
 - **Fantomlinjer mellom delstrekninger er rettet**, men beslektede feil er lette å lage igjen:
   et vegobjekt med MULTILINESTRING-geometri er flere adskilte strekninger, og limes de sammen til
   én punktliste, får matchingen en rett linje mellom dem som ikke finnes i virkeligheten. Effekten
