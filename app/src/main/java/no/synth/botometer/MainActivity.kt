@@ -2,6 +2,8 @@ package no.synth.botometer
 
 import android.Manifest
 import android.content.Intent
+import android.net.Uri
+import android.provider.Settings
 import android.os.Build
 import android.os.Bundle
 import android.view.View
@@ -49,6 +51,11 @@ class MainActivity : ComponentActivity() {
             setOnClickListener { refreshRates(this) }
         }
 
+        val alwaysAllow = Button(this).apply {
+            text = getString(R.string.always_allow_location)
+            setOnClickListener { openLocationSettings() }
+        }
+
         val clearCrash = Button(this).apply {
             text = getString(R.string.clear_crash_log)
             setOnClickListener {
@@ -72,6 +79,7 @@ class MainActivity : ComponentActivity() {
         val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             addView(status)
+            addView(alwaysAllow)
             addView(clearCrash)
             addView(speedometer)
             addView(refresh)
@@ -135,6 +143,16 @@ class MainActivity : ComponentActivity() {
 
             appendLine("TILGANGER")
             appendLine("Posisjon: " + if (GpsSpeedSource.hasLocationPermission(this@MainActivity)) "gitt" else "MANGLER - appen viser ingen fart")
+            // «Gitt» er ikke nok i seg selv: er den gitt som «mens appen er i bruk», får ikke
+            // bilskjermen fart, og feilen viser seg først i bilen.
+            if (!GpsSpeedSource.hasBackgroundLocationPermission(this@MainActivity)) {
+                appendLine("Bakgrunn: MANGLER - bilskjermen får ingen fart")
+                appendLine("  Trykk «${getString(R.string.always_allow_location)}» og velg")
+                appendLine("  «Tillat alltid». Fra Android 11 finnes ikke det valget i")
+                appendLine("  tillatelsesdialogen, bare på innstillingssiden.")
+            } else {
+                appendLine("Bakgrunn: gitt")
+            }
             appendLine()
 
             appendLine("DIAGNOSTIKK")
@@ -173,6 +191,21 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch {
             tables.refresh()
             render()
+        }
+    }
+
+    /**
+     * Fra Android 11 mangler «Tillat alltid» i tillatelsesdialogen; den finnes bare på appens
+     * innstillingsside. En runtime-forespørsel her ville blitt avvist uten at brukeren så noe,
+     * så vi sender dem dit i stedet.
+     */
+    private fun openLocationSettings() {
+        val intent = Intent(
+            Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+            Uri.fromParts("package", packageName, null),
+        )
+        runCatching { startActivity(intent) }.onFailure {
+            Toast.makeText(this, "Fant ikke innstillingssiden: ${it.message}", Toast.LENGTH_LONG).show()
         }
     }
 
