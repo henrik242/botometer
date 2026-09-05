@@ -65,16 +65,24 @@ class SpeedLimitRepository(
         var best: LimitMatch? = null
         var bestScore = Double.MAX_VALUE
 
+        // Bare for diagnostikk. Et bom uten forklaring er ikke til å feilsøke på.
+        var nearestMeters = Double.POSITIVE_INFINITY
+        var rejectedByHeading = false
+
         for (seg in segments) {
             for (i in 0 until seg.line.size - 1) {
                 val hit = Geo.distanceToSegment(plane, position, seg.line[i], seg.line[i + 1])
+                if (hit.distanceMeters < nearestMeters) nearestMeters = hit.distanceMeters
                 if (hit.distanceMeters > maxMatchDistanceMeters) continue
 
                 // Kursfilter: uten det plukker vi lett en parallell veg eller en avkjøring med
                 // annen fartsgrense. Under gangfart er kursen fra GPS ubrukelig, så da dropper vi det.
                 val headingPenalty = if (headingDeg != null && speedKmt > 8) {
                     val delta = Geo.headingDelta(headingDeg, hit.bearingDeg)
-                    if (delta > maxHeadingDeltaDeg) continue else delta / maxHeadingDeltaDeg * 15.0
+                    if (delta > maxHeadingDeltaDeg) {
+                        rejectedByHeading = true
+                        continue
+                    } else delta / maxHeadingDeltaDeg * 15.0
                 } else 0.0
 
                 val score = hit.distanceMeters + headingPenalty
@@ -90,6 +98,7 @@ class SpeedLimitRepository(
             Diagnostics.matched(best.limitKmt, best.distanceMeters, best.roadRef)
             return best
         }
+        Diagnostics.missed(segments.size, nearestMeters, rejectedByHeading)
         return lastGood?.copy(stale = true)
     }
 

@@ -64,17 +64,41 @@ class NvdbClient(
         // NVDB paginerer alle treff over sidestørrelsen. Uten dette mistet vi fartsgrenser
         // stille i tette byruter - nettopp der de varierer mest.
         for (page in 0 until MAX_PAGES) {
-            val (segments, next) = fetchPage(bbox, start)
-            out += segments
-            if (next == null) return@withContext TileData(out, complete = true)
-            start = next
+            val p = fetchPage(bbox, start)
+            out += p.segments
+
+            // Et tomt `neste` er IKKE det vanlige stoppsignalet: NVDB oppgir `neste.start` også
+            // når det ikke er mer å hente. Den tomme siden er signalet.
+            //
+            // Uten dette gikk hver rute 25 runder, hentet 24 tomme sider, og ble til slutt
+            // merket ufullstendig fordi løkka gikk tom for forsøk - ikke fordi dataene manglet.
+            // Diagnostikken viste da «10 segmenter (UFULLSTENDIG)», som er selvmotsigende, og
+            // hvert eneste ruteoppslag kostet 25 kall mot et offentlig API.
+            //
+            // `p.next == start` fanger et token som ikke flytter seg. Da ville vi ellers hentet
+            // samme side om og om igjen.
+            if (p.rawCount == 0 || p.next == null || p.next == start) {
+                return@withContext TileData(out, complete = true)
+            }
+            start = p.next
         }
 
         Log.w(TAG, "Traff sidegrensen ($MAX_PAGES sider, ${out.size} objekter) for $bbox - ufullstendig")
         TileData(out, complete = false)
     }
 
-    private fun fetchPage(bbox: BBox, start: String?): Pair<List<SpeedLimitSegment>, String?> {
+    /**
+     * @param rawCount antall objekter NVDB faktisk sendte, før parsing. Det er dette som avgjør
+     * om det er mer å hente - ikke hvor mange vi klarte å tolke, ellers ville en side med bare
+     * uparsebare objekter sett ut som slutten.
+     */
+    private data class Page(
+        val segments: List<SpeedLimitSegment>,
+        val next: String?,
+        val rawCount: Int,
+    )
+
+    private fun fetchPage(bbox: BBox, start: String?): Page {
         val url = buildString {
             append(baseUrl)
             append("/vegobjekter/api/v4/vegobjekter/$TYPE_FARTSGRENSE")
@@ -126,8 +150,8 @@ class NvdbClient(
         }
 
         val root = json.parseToJsonElement(body).jsonObject
-        val segments = root["objekter"]?.jsonArray.orEmpty()
-            .mapNotNull { parseSegment(it.jsonObject) }
+        val objekter = root["objekter"]?.jsonArray.orEmpty()
+        val segments = objekter.mapNotNull { parseSegment(it.jsonObject) }
 
         // Vi følger `start`-tokenet, ikke `neste.href`. Href-en i responsen har historisk pekt
         // på gamle stier (uten /api/v4/), så det er tryggere å bygge URL-en selv.
@@ -135,7 +159,7 @@ class NvdbClient(
             ?.get("neste")?.jsonObject
             ?.get("start")?.jsonPrimitive?.contentOrNull
 
-        return segments to next
+        return Page(segments, next, objekter.size)
     }
 
     private fun parseSegment(obj: JsonObject): SpeedLimitSegment? {
