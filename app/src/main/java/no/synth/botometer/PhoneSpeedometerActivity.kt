@@ -12,7 +12,9 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import no.synth.botometer.alert.SpeedWatch
 import no.synth.botometer.fine.FineEstimate
 import no.synth.botometer.speed.GpsSpeedSource
@@ -30,14 +32,15 @@ import no.synth.botometer.speed.LocationForegroundService
  */
 class PhoneSpeedometerActivity : ComponentActivity() {
 
-    private lateinit var watch: SpeedWatch
+    // Nullable, ikke lateinit: konstruksjonen leser satsfila fra disk, og det skal
+    // ikke skje på hovedtråden mens skjermen skal tegnes.
+    private var watch: SpeedWatch? = null
     private lateinit var speed: TextView
     private lateinit var headline: TextView
     private lateinit var detail: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        watch = SpeedWatch(this)
 
         // Skjermen skal ikke slukke midt i en kjøretur. Den slås av igjen når aktiviteten
         // forlates, siden flagget følger vinduet.
@@ -71,7 +74,10 @@ class PhoneSpeedometerActivity : ComponentActivity() {
             // Slutter å lese posisjon når skjermen ikke vises. En app som leser GPS i bakgrunnen
             // uten grunn er akkurat det foreground-servicen er der for å unngå.
             repeatOnLifecycle(Lifecycle.State.STARTED) {
-                watch.readings().collect { render(it) }
+                val w = watch ?: withContext(Dispatchers.IO) {
+                    SpeedWatch(this@PhoneSpeedometerActivity)
+                }.also { watch = it }
+                w.readings().collect { render(it) }
             }
         }
     }
@@ -137,7 +143,7 @@ class PhoneSpeedometerActivity : ComponentActivity() {
                 is FineEstimate.Prosecution -> append("  ·  ${e.overKmt} km/t over")
                 else -> Unit
             }
-            if (watch.ratesStale) append("  ·  SATSER UTDATERT")
+            if (watch?.ratesStale == true) append("  ·  SATSER UTDATERT")
         }
     }
 

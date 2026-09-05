@@ -14,6 +14,12 @@ import no.synth.botometer.limit.SpeedLimitRepository
  */
 open class BotometerApp : Application() {
 
+    override fun onCreate() {
+        super.onCreate()
+        // Først av alt: et krasj under oppstart er også et krasj som skal kunne vises fram.
+        CrashLog.install(this)
+    }
+
     /** Application-context med vilje: repoet trenger bare filesDir og assets. */
     open fun createFineTableRepository(): FineTableRepository =
         FineTableRepository(this, getString(R.string.satser_url))

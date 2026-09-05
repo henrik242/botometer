@@ -131,9 +131,12 @@ release-bygg uansett nøkkel — uten vertsvalidering kan en vilkårlig app på 
 som kontroll.
 
 **Telefon-appen er nå oppsett, oppdateringskanal og diagnostikk.** Uten Play Console finnes ingen
-crash-rapporter, så `Diagnostics` viser NVDB-kall, siste rute, siste treff og siste feil. Teksten
-er selectable, så den kan limes rett inn i en issue. Diagnostikken vises aldri i bilen — det er
-distraksjon uansett hvor nyttig den er.
+crash-rapporter, så appen må rapportere seg selv. `Diagnostics` viser NVDB-kall, siste rute, siste
+treff, siste bom og kandidatene matchingen forkastet — vinneren alene sier ikke hvorfor den vant.
+`CrashLog` tar vare på siste stacktrace og viser den øverst: et krasj etterlot seg ellers
+ingenting, og «den krasjer av og til» er ikke noe å feilsøke på. Teksten er selectable, så den kan
+limes rett inn i en issue. Diagnostikken vises aldri i bilen — det er distraksjon uansett hvor
+nyttig den er.
 
 ## Datakilder
 
