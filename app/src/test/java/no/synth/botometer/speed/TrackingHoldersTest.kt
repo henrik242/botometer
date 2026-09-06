@@ -1,6 +1,7 @@
 package no.synth.botometer.speed
 
 import no.synth.botometer.speed.TrackingHolders.Holder
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -88,5 +89,40 @@ class TrackingHoldersTest {
     @Test
     fun `avslutt naar ingenting er i gang stopper ingenting`() {
         assertFalse("ikke send en stopp til en tjeneste som ikke kjører", holders.clear())
+    }
+
+    /**
+     * Å telle skjermer var bare halve svaret: begge de gamle holderne VAR skjermer, og skjermer
+     * slukker. Kjører du med Maps på bilskjermen uten å ha åpnet Botometer i bilen, finnes det
+     * ingen bil-økt, og telefonskjermen er alene om å holde. Går den i svart - som den gjør av
+     * seg selv mens telefonen projiserer - stoppet sporingen, og varslene døde i det de var det
+     * eneste appen hadde igjen.
+     */
+    @Test
+    fun `telefonskjermen som slukker stopper ikke sporingen naar bilen er tilkoblet`() {
+        holders.add(Holder.CONNECTION)
+        holders.add(Holder.PHONE)
+
+        assertFalse("bilforbindelsen holder fortsatt", holders.remove(Holder.PHONE))
+        assertTrue(holders.active)
+    }
+
+    @Test
+    fun `frakobling stopper sporingen naar ingen skjerm vises`() {
+        holders.add(Holder.CONNECTION)
+
+        assertTrue("turen er over, og ingen ser på noe", holders.remove(Holder.CONNECTION))
+        assertFalse(holders.active)
+    }
+
+    /** Til diagnostikken: «sporingen stoppet» uten hvem som slapp er et faktum uten en årsak. */
+    @Test
+    fun `holderne kan leses ut`() {
+        holders.add(Holder.CONNECTION)
+        holders.add(Holder.PHONE)
+
+        assertEquals(setOf(Holder.CONNECTION, Holder.PHONE), holders.current)
+        holders.remove(Holder.PHONE)
+        assertEquals(setOf(Holder.CONNECTION), holders.current)
     }
 }

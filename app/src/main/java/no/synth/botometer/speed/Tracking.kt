@@ -1,6 +1,7 @@
 package no.synth.botometer.speed
 
 import android.content.Context
+import no.synth.botometer.Diagnostics
 import no.synth.botometer.Settings
 
 /**
@@ -13,12 +14,20 @@ class TrackingHolders {
      * CAR er bilØKTEN, ikke bilskjermen. Det er hele poenget: verten stopper skjermen vår i det
      * Google Maps tar over bilskjermen, men økta lever videre - og det er da varslene er den
      * eneste flaten som er igjen.
+     *
+     * CONNECTION er selve tilkoblingen til bilen, uavhengig av om noen skjerm vises noe sted.
+     * Den finnes fordi CAR og PHONE begge er SKJERMER, og en skjerm kan slukke: er Maps oppe på
+     * bilskjermen og telefonskjermen går i svart, holdt ingen av dem lenger - og appen sluttet å
+     * varsle nøyaktig når den skulle varslet.
      */
-    enum class Holder { CAR, PHONE }
+    enum class Holder { CAR, PHONE, CONNECTION }
 
     private val holders = LinkedHashSet<Holder>()
 
     val active: Boolean get() = holders.isNotEmpty()
+
+    /** Til diagnostikken. Uten den er «sporingen stoppet» et faktum uten en årsak. */
+    val current: Set<Holder> get() = LinkedHashSet(holders)
 
     fun add(holder: Holder) {
         holders += holder
@@ -46,10 +55,15 @@ class TrackingHolders {
  * fartsvarslene - døde nøyaktig når varselet var den eneste flaten som var igjen. README-en
  * påsto at tjenesten «lever videre når Maps overtar skjermen»; det gjorde den ikke.
  *
- * Nå teller vi hvem som vil ha den. Bilen holder på sporingen så lenge ØKTA lever - altså til
- * appen avsluttes i bilen eller telefonen kobles fra - ikke bare så lenge skjermen vår er den
- * som vises. Telefonen holder på den mens speedometeret er synlig, som før, så tilbake-knappen
- * på telefonen fortsatt slår av GPS-en når det er den eneste flaten i bruk.
+ * Å telle skjermer var bare halve svaret. Begge holderne var fortsatt skjermer, og skjermer
+ * slukker: kjører du med Maps på bilskjermen og telefonskjermen går i svart, slapp CAR aldri
+ * (økta lever) - men var Botometer aldri åpnet i bilen den turen, finnes det ingen økt, og da
+ * var telefonskjermen det eneste som holdt. Den gikk i svart, tellingen ble tom, og varslene
+ * døde i det de var det eneste appen hadde igjen. Igjen.
+ *
+ * Derfor holder også selve BILFORBINDELSEN ([TrackingHolders.Holder.CONNECTION], satt fra
+ * [no.synth.botometer.BotometerApp]): er telefonen koblet til bilen, kjører sporingen, uansett
+ * hva som vises hvor.
  */
 object Tracking {
 
@@ -69,10 +83,14 @@ object Tracking {
      */
     @Synchronized
     fun acquire(context: Context, holder: TrackingHolders.Holder) {
-        if (!Settings(context).enabled) return
+        if (!Settings(context).enabled) {
+            Diagnostics.tracking("$holder ba om sporing, men appen er slått av", holders.current)
+            return
+        }
 
         appContext = context.applicationContext
         holders.add(holder)
+        Diagnostics.tracking("$holder tok sporingen", holders.current)
         // Alltid, ikke bare når den første holderen kommer: blir tjenesten drept av systemet,
         // er tellingen vår fortsatt full, og da ville en betinget start aldri startet den igjen.
         // `onStartCommand` tåler å bli kalt om igjen.
@@ -81,13 +99,23 @@ object Tracking {
 
     @Synchronized
     fun release(holder: TrackingHolders.Holder) {
-        if (holders.remove(holder)) stopService()
+        val last = holders.remove(holder)
+        Diagnostics.tracking(
+            "$holder slapp sporingen" + if (last) " - siste holder, stopper" else "",
+            holders.current,
+        )
+        if (last) stopService()
     }
 
     /** «Avslutt» på en av skjermene: slutt for alle. */
     @Synchronized
     fun stopAll() {
-        if (holders.clear()) stopService()
+        val wasActive = holders.clear()
+        Diagnostics.tracking(
+            if (wasActive) "avslutt - stopper for alle" else "avslutt, men ingenting var i gang",
+            holders.current,
+        )
+        if (wasActive) stopService()
     }
 
     private fun stopService() {

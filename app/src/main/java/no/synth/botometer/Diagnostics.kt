@@ -29,6 +29,19 @@ object Diagnostics {
     private val lastAlertSuppressed = AtomicReference<String?>(null)
     private val carSession = AtomicReference<String?>(null)
     private val carSessionActive = java.util.concurrent.atomic.AtomicBoolean(false)
+    private val carConnectionError = AtomicReference<String?>(null)
+
+    /**
+     * De siste endringene i hvem som holder på sporingen, nyeste sist.
+     *
+     * En historikk og ikke bare en tilstand: spørsmålet er alltid «hvorfor sluttet den», og det
+     * svaret er borte i det tilstanden er «stoppet». Med linjene under ser man at telefonen
+     * slapp 20:04:11 og at det var den siste holderen - altså at skjermen som slukket tok
+     * varslene med seg.
+     */
+    private val trackingLog = java.util.concurrent.ConcurrentLinkedDeque<String>()
+    private val trackingActive = java.util.concurrent.atomic.AtomicBoolean(false)
+    private val trackingHolders = AtomicReference("ingen")
 
     /**
      * Posisjonssporingen kan nektes uten at brukeren merker noe annet enn at farten står stille.
@@ -159,12 +172,47 @@ object Diagnostics {
         lastAlertSuppressed.set("$reason ${klokke()}")
     }
 
+    /**
+     * @param holders hvem som holder ETTER endringen. Uten den er «PHONE slapp» like forenlig
+     * med «bilen sporer videre» som med «alt stoppet», og det er hele forskjellen.
+     */
+    fun tracking(event: String, holders: Set<Any>) {
+        trackingActive.set(holders.isNotEmpty())
+        trackingHolders.set(if (holders.isEmpty()) "ingen" else holders.joinToString(", "))
+        trackingLog.addLast("${klokke()}  $event  →  [${trackingHolders.get()}]")
+        while (trackingLog.size > MAX_TRACKING_LINES) trackingLog.pollFirst()
+    }
+
+    /** CarConnection kan ikke leses uten <provider>-oppføringen under <queries>. */
+    fun carConnectionFailed(message: String) {
+        carConnectionError.set(message)
+    }
+
+    fun trackingLines(): String = buildString {
+        if (trackingActive.get()) {
+            appendLine("✓ Sporing: i gang (holdere: ${trackingHolders.get()})")
+        } else {
+            appendLine("✗ Sporing: IKKE i gang - ingen fart, og dermed ingen varsler")
+            appendLine("  CONNECTION mangler her betyr at telefonen ikke tror den er koblet til")
+            appendLine("  bilen. CAR finnes bare om Botometer er åpnet i bilen denne turen.")
+        }
+        carConnectionError.get()?.let { appendLine("✗ Kunne ikke lese bilforbindelsen: $it") }
+        if (trackingLog.isEmpty()) {
+            appendLine("· Ingen endringer registrert ennå")
+        } else {
+            appendLine("· Siste endringer:")
+            trackingLog.forEach { appendLine("  $it") }
+        }
+    }
+
     fun alertLines(): String = buildString {
         appendLine("· Varsler sendt: ${alertsPosted.get()} (${alertsFailed.get()} feilet)")
         appendLine("· Siste varsel: ${lastAlert.get() ?: "ingen ennå"}")
         lastAlertError.get()?.let { appendLine("✗ Siste varselfeil: $it") }
         lastAlertSuppressed.get()?.let { appendLine("· Sist undertrykt: $it") }
     }
+
+    private const val MAX_TRACKING_LINES = 8
 
     private fun klokke(): String =
         java.time.LocalTime.now().withNano(0).toString()

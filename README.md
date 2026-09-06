@@ -477,7 +477,7 @@ Derfor finnes appen på tre flater i stedet:
 |---|---|---|
 | **Bilskjermen** | Botometer er valgt i bilen | Speedometeret, tegnet på `NavigationTemplate` |
 | **Telefonen** | Maps eier bilskjermen | `MainActivity`: samme tall, stor skrift, skjermen holdes våken |
-| **Varsel** | Alltid, i bakgrunnen | Heads-up når farten krysser inn i et nytt bøtenivå |
+| **Varsel** | Alltid, så lenge telefonen er koblet til bilen | Heads-up når farten krysser inn i et nytt bøtenivå |
 
 **Bilskjermen har en «Avslutt»-knapp, og den betyr slutt.** Den stopper posisjonssporingen, ikke
 bare visningen: foreground-servicen legger seg ned og det vedvarende varselet forsvinner. Uten den
@@ -526,7 +526,26 @@ så lenge skjermen vår vises. Økta destrueres når appen avsluttes i bilen ell
 fra; det er der turen er over. Telefonen holder på sporingen mens speedometeret er synlig, som
 før, så tilbake-knappen der fortsatt slår av GPS-en når telefonen er den eneste flaten i bruk -
 men den slår den ikke lenger av for bilen. Hovedbryteren står over hele tellingen: er den av,
-slipper `Tracking.acquire` ingen holder inn i det hele tatt. `TrackingHolders` er tellingen alene, uten Android
+slipper `Tracking.acquire` ingen holder inn i det hele tatt.
+
+**Og å telle skjermer var bare halve svaret.** Begge holderne var fortsatt skjermer, og skjermer
+slukker. Kjører du med Maps på bilskjermen uten å ha åpnet Botometer i bilen den turen, finnes
+det ingen bil-økt - og da er telefonskjermen alene om å holde. Den går i svart av seg selv mens
+telefonen projiserer, `MainActivity.onStop` slipper, tellingen blir tom, og varslene dør i
+nøyaktig det øyeblikket de er det eneste appen har igjen. Samme feil som før, én flate lenger ut.
+
+Derfor holder også selve **bilforbindelsen** på sporingen: `BotometerApp` observerer
+`CarConnection` med `observeForever` og tar holderen `CONNECTION` så lenge telefonen er koblet
+til bilen, uansett hva som vises hvor. `observeForever` og ikke en livssyklus, for en observatør
+bundet til en aktivitet slutter å se i samme øyeblikk som problemet oppstår.
+
+Det forutsetter at prosessen er i live når du kobler til. Er appen helt død, starter ingenting av
+seg selv - Android Auto vekker oss først når Botometer åpnes i bilen. Åpne telefon-appen én gang
+i begynnelsen av turen, eller Botometer på bilskjermen, så holder forbindelsen resten.
+
+`Diagnostics.trackingLines()` skriver hvem som holder nå og de siste endringene, med klokkeslett.
+Spørsmålet er alltid «hvorfor sluttet den», og det svaret er borte i det tilstanden bare er
+«stoppet». `TrackingHolders` er tellingen alene, uten Android
 rundt seg, og `TrackingHoldersTest` låser den.
 
 **Dukker varselet opp på telefonen, men ikke i bilen,** er det en helt annen feil - da er

@@ -38,6 +38,9 @@ object CarNotificationDiagnostics {
         appendChannel(context)
         appendLine(carConnection(carConnectionType))
         appendLine(Diagnostics.carSessionLine())
+        // Sporingen før varslene: er den stoppet, er det ingen fart å varsle om, og alle
+        // linjene om kanaler og bil-økter er svar på et spørsmål ingen stilte.
+        append(Diagnostics.trackingLines())
         append(Diagnostics.alertLines())
 
         // Hva som faktisk sendes. Er alt over grønt, er det dette som må holdes mot
