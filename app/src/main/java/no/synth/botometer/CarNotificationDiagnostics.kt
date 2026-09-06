@@ -43,9 +43,18 @@ object CarNotificationDiagnostics {
         append(Diagnostics.trackingLines())
         append(Diagnostics.alertLines())
 
-        // Hva som faktisk sendes. Er alt over grønt, er det dette som må holdes mot
-        // vertens krav - og da er det greit å slippe å lese det ut av kildekoden.
-        appendLine("· Sendes som: CarAppExtender, PRIORITY_HIGH, ingen kategori")
+        // Hva som faktisk sendes - utledet av bryterne, ikke påstått. Linja sto som en fast
+        // tekst og hevdet CarAppExtender og PRIORITY_HIGH uansett, mens begge deler følger
+        // innstillingene. Den løy altså nøyaktig for den som leser rapporten fordi bilvarselet
+        // uteblir, som er den ene personen den finnes for.
+        val settings = Settings(context)
+        appendLine(
+            "· Sendes som: " + buildList {
+                add(if (settings.carAlerts) "CarAppExtender" else "UTEN CarAppExtender")
+                add(if (settings.phoneAlerts) "PRIORITY_HIGH" else "PRIORITY_LOW")
+                add("ingen kategori")
+            }.joinToString(", ")
+        )
         appendLine("· Er alt over ✓ og varselet likevel ikke vises i bilen, er neste sted")
         appendLine("  Android Auto-innstillingene på hodeenheten (varsler/kjøremodus), og")
         appendLine("  deretter vertsloggen - se tools/bil-diagnostikk.sh i README.")
@@ -53,25 +62,36 @@ object CarNotificationDiagnostics {
 
     private fun StringBuilder.appendChannel(context: Context) {
         val manager = context.getSystemService(NotificationManager::class.java)
-        val channel = runCatching { manager?.getNotificationChannel(SpeedingAlerts.CHANNEL_ID) }
-            .getOrNull()
+        // Den kanalen som FAKTISK brukes. Er telefonvarslene av, går varselet på den stille
+        // kanalen, og rapporten sa «ikke opprettet ennå» om en kanal ingenting bruker.
+        val quiet = !Settings(context).phoneAlerts
+        val id = if (quiet) SpeedingAlerts.CHANNEL_ID_QUIET else SpeedingAlerts.CHANNEL_ID
+        val channel = runCatching { manager?.getNotificationChannel(id) }.getOrNull()
 
         if (channel == null) {
-            appendLine("· Varselkanal «${SpeedingAlerts.CHANNEL_ID}»: ikke opprettet ennå")
+            appendLine("· Varselkanal «$id»: ikke opprettet ennå")
             appendLine("  (den lages ved første fartsvarsel)")
             return
         }
 
         val importance = channel.importance
-        if (importance >= NotificationManager.IMPORTANCE_HIGH) {
-            appendLine("✓ Varselkanal «${SpeedingAlerts.CHANNEL_ID}»: ${importanceName(importance)}")
-        } else {
-            appendLine("✗ Varselkanal «${SpeedingAlerts.CHANNEL_ID}»: ${importanceName(importance)} - FOR LAV")
-            appendLine("  Under HIGH gir ingen heads-up, og bilverten viser ikke varselet.")
-            appendLine("  Telefonen viser det i skyggen likevel, så det ser ut som om alt virker.")
-            appendLine("  Viktighet kan bare SENKES av appen, aldri heves: å opprette kanalen på")
-            appendLine("  nytt hjelper ikke. Sett den til «Høy»/«Vis på skjermen» i appens")
-            appendLine("  varselinnstillinger, eller avinstaller og installer på nytt.")
+        when {
+            // Den stille kanalen SKAL være lav. Bilskjermens viktighet settes uansett av
+            // CarAppExtender.setImportance, som overstyrer kanalen på bilskjermen - det er
+            // nettopp derfor en stille telefonkanal fortsatt gir varsel i bilen.
+            quiet -> {
+                appendLine("· Varselkanal «$id»: ${importanceName(importance)}")
+                appendLine("  (stille med vilje - du har slått av varsler på telefonen)")
+            }
+            importance >= NotificationManager.IMPORTANCE_HIGH ->
+                appendLine("✓ Varselkanal «$id»: ${importanceName(importance)}")
+            else -> {
+                appendLine("✗ Varselkanal «$id»: ${importanceName(importance)} - FOR LAV")
+                appendLine("  Under HIGH gir ingen heads-up på telefonen.")
+                appendLine("  Viktighet kan bare SENKES av appen, aldri heves: å opprette kanalen på")
+                appendLine("  nytt hjelper ikke. Sett den til «Høy»/«Vis på skjermen» i appens")
+                appendLine("  varselinnstillinger, eller avinstaller og installer på nytt.")
+            }
         }
         // Bare når «Ikke forstyrr» FAKTISK er på. canBypassDnd() er false for nesten alle
         // kanaler i alle apper, så en advarsel på den alene peker på et ikke-problem hos

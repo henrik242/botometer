@@ -14,8 +14,8 @@ sealed interface FineEstimate {
         val licence: LicenceOutcome,
         val overKmt: Int,
         val band: String,
+        /** Satsen gjelder bare motorveg, og vegtypen er ukjent. Alle tre flatene merker den. */
         val uncertain: Boolean = false,
-        val uncertaintyReason: String? = null,
     ) : FineEstimate
 
     /** Over taket for forenklet forelegg: vanlig forelegg / anmeldelse. */
@@ -29,7 +29,6 @@ sealed interface FineEstimate {
 class FineCalculator(private val table: FineTable) {
 
     val version: String get() = table.versjon
-    val legalBasis: String get() = table.hjemmel
 
     /**
      * @param speedKmt fart fra GPS/bil (antatt lik faktisk fart)
@@ -61,7 +60,6 @@ class FineCalculator(private val table: FineTable) {
             overKmt = over,
             band = band.label,
             uncertain = uncertain,
-            uncertaintyReason = if (uncertain) "Satsen gjelder bare motorveg - vegtype ukjent" else null,
         )
     }
 

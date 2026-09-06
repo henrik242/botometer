@@ -9,6 +9,9 @@
     <string name="nvdb_client_id" translatable="false">botometer-android</string>
     <string name="refresh_rates">Oppdater satser</string>
     <string name="grant_permissions">Gi tilganger</string>
+    <!-- Etter to avslag kommer tillatelsesdialogen aldri mer, og «Gi tilganger» ville vært en
+         knapp som ikke gjorde noe. Da er innstillingssiden den eneste veien. -->
+    <string name="open_app_settings">Åpne innstillinger</string>
     <!-- Egen kanal, og med vilje IMPORTANCE_HIGH: dette er det ene varselet som skal sees.
          Posisjonsvarselet er IMPORTANCE_LOW nettopp for å ikke bli sett. -->
     <string name="channel_alerts">Fartsvarsler</string>
@@ -39,14 +42,14 @@
     <string name="setting_phone_alerts">Varsler på telefonen</string>
     <!-- «Av» kan ikke bety «ingenting postes»: bilverten leser varslene fra telefonens
          varselstrøm, så et varsel i bilen forutsetter et varsel på telefonen. -->
-    <string name="setting_phone_alerts_help">Av: ingen heads-up på telefonen, bare en stille linje i varselskyggen. Bilvarselet kommer som før.</string>
+    <string name="setting_phone_alerts_help">Av: varselet spretter ikke opp på telefonen, det legger seg stille i varselpanelet. Varselet på bilskjermen kommer som før.</string>
     <string name="setting_car_alerts">Varsler på bilskjermen</string>
-    <string name="setting_car_alerts_help">Av: varselet sendes uten bil-utvidelsen, og da viser ikke bilverten det i det hele tatt.</string>
+    <string name="setting_car_alerts_help">Av: fartsvarslene vises ikke på bilskjermen. Du får dem fortsatt på telefonen.</string>
     <!-- Hovedbryteren. Den het en gang «sporing i bakgrunnen» og betydde bare om bil-økta fikk
          holde på GPS-en mens Maps eide bilskjermen — altså et valg mellom to grader av på. En
          bryter som lar appen lese posisjon uansett stilling er ikke en av-bryter. -->
     <string name="setting_enabled">Botometer er på</string>
-    <string name="setting_enabled_help">Av: alt stopper — posisjonssporingen, speedometeret her og i bilen, fartsvarslene og oppslagene mot NVDB. Appen leser ingenting og bruker ingen data før du slår den på igjen.</string>
+    <string name="setting_enabled_help">Av: alt stopper — posisjonssporingen, speedometeret her og i bilen, fartsvarslene og oppslagene mot Vegvesenets fartsgrensedata. Appen leser ingenting og bruker ingen data før du slår den på igjen.</string>
     <string name="always_allow_location">Posisjon: tillat alltid</string>
     <!-- Oppdateringskanal for bøtesatsene. Uten Play må satsene kunne hentes uavhengig av
          APK-versjonen, ellers kjører gamle installasjoner utdaterte tall i stillhet. -->

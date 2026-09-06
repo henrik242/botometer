@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Appen hadde ingen tema i det hele tatt, og arvet systemets lyse standard. Alle farger var
+    hardkodet som mørk tekst, så skjermen var hvit også om natta - og på skall som løser
+    DeviceDefault til mørkt (One UI og flere andre) ble den valgte manuelle grensen svart tekst
+    på svart bunn.
+
+    Material og ikke DeviceDefault.DayNight: DayNight-varianten kom først i API 29, og minSdk er
+    26. To temaer med values-night gir samme resultat uten AppCompat.
+-->
+<resources>
+    <style name="Theme.Botometer" parent="@android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/background</item>
+        <item name="android:colorBackground">@color/background</item>
+        <item name="android:textColorPrimary">@color/text</item>
+        <item name="android:textColorSecondary">@color/text_secondary</item>
+    </style>
+</resources>

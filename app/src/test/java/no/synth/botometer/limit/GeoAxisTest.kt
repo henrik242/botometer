@@ -1,6 +1,7 @@
 package no.synth.botometer.limit
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -40,7 +41,10 @@ class GeoAxisTest {
             var b = 0.0
             while (b < 360.0) {
                 val d = axis(a, b)
-                assert(d in 0.0..90.0) { "axisDelta($a, $b) = $d er utenfor 0-90" }
+                // JUnits assertTrue, ikke Kotlins bare `assert(...)`: den siste er en no-op
+                // med mindre JVM-en kjører med -ea. Testen besto altså av en grunn som ikke
+                // hadde noe med koden å gjøre, og ville bestått med funksjonen slettet.
+                assertTrue("axisDelta($a, $b) = $d er utenfor 0-90", d in 0.0..90.0)
                 b += 7.0
             }
             a += 11.0

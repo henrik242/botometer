@@ -264,7 +264,6 @@ class NvdbClient(
         const val EGENSKAP_FARTSGRENSE = 2021
         const val TYPE_MOTORVEG = 595
         const val EGENSKAP_MOTORVEGTYPE = 5378
-        const val ENUM_MOTORVEG = 7355
         const val ENUM_MOTORTRAFIKKVEG = 7356
         private const val PAGE_SIZE = 1000
 

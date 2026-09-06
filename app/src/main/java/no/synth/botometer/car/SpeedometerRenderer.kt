@@ -5,17 +5,15 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Rect
 import android.graphics.Typeface
-import androidx.car.app.CarContext
 import androidx.car.app.SurfaceCallback
 import androidx.car.app.SurfaceContainer
+import no.synth.botometer.alert.ReadingText
+import no.synth.botometer.alert.Severity
 import no.synth.botometer.alert.SpeedWatch
 import no.synth.botometer.fine.FineCalculator
 import no.synth.botometer.fine.FineEstimate
 import no.synth.botometer.limit.MatchConfidence
 import no.synth.botometer.speed.FixFreshness
-import java.text.NumberFormat
-import java.util.Locale
-import kotlin.math.roundToInt
 
 /**
  * Tegner direkte på Surface fra bilskjermen. Layoutet er bevisst grovt: tre linjer med stor
@@ -26,17 +24,64 @@ import kotlin.math.roundToInt
  * systemets UI (klokke, navigasjonsknapper), så vi sentrerer innholdet i det synlige feltet.
  */
 class SpeedometerRenderer(
-    private val carContext: CarContext,
     private val calculator: FineCalculator,
     private val ratesStale: Boolean = false,
+    /**
+     * Bilens dag/natt-modus, lest fra verten ved hver tegning. En lambda og ikke en `CarContext`:
+     * resten av denne klassen er Canvas og Paint, og det eneste den trengte bilkonteksten til
+     * var dette ene svaret.
+     */
+    private val darkMode: () -> Boolean = { true },
 ) : SurfaceCallback {
+
+    /**
+     * Bilskjermen byttet aldri palett. Android Auto skifter hele hodeenheten mellom dag og natt
+     * fra bilens lyssensor, mens Botometer sto svart gjennom begge: et svart hull ved siden av
+     * et hvitt system-UI i dagslys, og - verre - en mørk bunn under direkte sol, der gråtonene
+     * som er tunet for natt er det første som forsvinner i gjenskinnet.
+     */
+    private data class Palette(
+        val ground: Int,
+        val muted: Int,
+        val footer: Int,
+        val ok: Int,
+        val fine: Int,
+        val points: Int,
+        val prosecution: Int,
+        val signFill: Int,
+        val signText: Int,
+    )
+
+    private val night = Palette(
+        ground = Color.rgb(12, 12, 14),
+        muted = Color.rgb(150, 150, 150),
+        footer = Color.rgb(110, 110, 115),
+        ok = Color.rgb(60, 190, 100),
+        fine = Color.rgb(230, 195, 60),
+        points = Color.rgb(240, 140, 40),
+        prosecution = Color.rgb(225, 55, 55),
+        signFill = Color.WHITE,
+        signText = Color.BLACK,
+    )
+
+    private val day = Palette(
+        ground = Color.rgb(245, 245, 247),
+        muted = Color.rgb(110, 110, 115),
+        footer = Color.rgb(95, 95, 100),
+        ok = Color.rgb(25, 120, 60),
+        fine = Color.rgb(150, 110, 0),
+        points = Color.rgb(160, 85, 0),
+        prosecution = Color.rgb(200, 45, 45),
+        signFill = Color.WHITE,
+        signText = Color.BLACK,
+    )
+
+    private var palette = night
 
     private var container: SurfaceContainer? = null
     private var visible: Rect? = null
 
     private var reading: SpeedWatch.Reading? = null
-
-    private val nok = NumberFormat.getIntegerInstance(Locale("nb", "NO"))
 
     private val bigText = Paint().apply {
         isAntiAlias = true
@@ -51,7 +96,6 @@ class SpeedometerRenderer(
     private val smallText = Paint().apply {
         isAntiAlias = true
         textAlign = Paint.Align.CENTER
-        color = Color.LTGRAY
     }
     private val signFill = Paint().apply { isAntiAlias = true; color = Color.WHITE }
     private val signRing = Paint().apply {
@@ -94,9 +138,14 @@ class SpeedometerRenderer(
         val surface = container?.surface ?: return
         if (!surface.isValid) return
 
+        palette = if (darkMode()) night else day
+        smallText.color = palette.muted
+        signFill.color = palette.signFill
+        signText.color = palette.signText
+
         val canvas = try { surface.lockCanvas(null) } catch (t: Throwable) { return }
         try {
-            canvas.drawColor(Color.rgb(12, 12, 14))
+            canvas.drawColor(palette.ground)
             val area = visible ?: Rect(0, 0, container!!.width, container!!.height)
             render(canvas, area)
         } finally {
@@ -116,27 +165,21 @@ class SpeedometerRenderer(
             return
         }
 
-        val lost = r.freshness == FixFreshness.LOST
-        val estimate = r.estimate
-
         // Fargen bæres av boten, ikke av farten: grønn = ingen bot, gul = bot uten prikker,
         // oransje = prikker, rød = anmeldelse/tap av førerrett. Er GPS-en borte, er det ingen
         // konsekvens å farge - da er grått det ærlige svaret.
-        val accent = when {
-            lost -> Color.rgb(150, 150, 150)
-            estimate is FineEstimate.NoOffence -> Color.rgb(60, 190, 100)
-            estimate is FineEstimate.UnknownLimit -> Color.rgb(150, 150, 150)
-            estimate is FineEstimate.SimplifiedFine ->
-                if (estimate.points == 0) Color.rgb(230, 195, 60) else Color.rgb(240, 140, 40)
-            estimate is FineEstimate.Prosecution -> Color.rgb(225, 55, 55)
-            else -> Color.rgb(150, 150, 150)
+        val accent = when (ReadingText.severity(r)) {
+            Severity.LOST, Severity.UNKNOWN -> palette.muted
+            Severity.NONE -> palette.ok
+            Severity.FINE -> palette.fine
+            Severity.POINTS -> palette.points
+            Severity.PROSECUTION -> palette.prosecution
         }
 
-        // Linje 1: farten. «--» og ikke «0» når signalet er borte: null er en måling, og vi har
-        // ingen. Et nulltall ville dessuten sett ut som at bilen står stille.
+        // Linje 1: farten.
         bigText.color = accent
         bigText.textSize = unit * 3.4f
-        canvas.drawText(if (lost) "--" else "${r.speedKmt.roundToInt()}", cx, area.top + unit * 3.4f, bigText)
+        canvas.drawText(ReadingText.speed(r), cx, area.top + unit * 3.4f, bigText)
         smallText.textSize = unit * 0.85f
         canvas.drawText("km/t", cx, area.top + unit * 4.3f, smallText)
 
@@ -146,24 +189,35 @@ class SpeedometerRenderer(
         // Linje 2: konsekvensen
         midText.color = accent
         midText.textSize = unit * 2.2f
-        val headline = when {
-            lost -> "Ingen GPS"
-            estimate is FineEstimate.UnknownLimit -> "Ukjent fartsgrense"
-            estimate is FineEstimate.NoOffence -> "Ingen bot"
-            estimate is FineEstimate.SimplifiedFine -> "${nok.format(estimate.amountNok)} kr"
-            estimate is FineEstimate.Prosecution -> "Anmeldelse"
-            else -> ""
-        }
-        canvas.drawText(headline, cx, area.top + unit * 6.9f, midText)
+        canvas.drawText(ReadingText.headline(r), cx, area.top + unit * 6.9f, midText)
 
         // Linje 3: detaljer
         smallText.textSize = unit * 0.9f
+        fitted(subtitle(r), area, unit * 0.9f, unit * 0.6f)
         canvas.drawText(subtitle(r), cx, area.top + unit * 8.1f, smallText)
 
-        smallText.textSize = unit * 0.7f
-        smallText.color = Color.rgb(110, 110, 115)
+        fitted(footer(r), area, unit * 0.7f, unit * 0.5f)
+        smallText.color = palette.footer
         canvas.drawText(footer(r), cx, area.bottom - unit * 0.4f, smallText)
-        smallText.color = Color.LTGRAY
+        smallText.color = palette.muted
+    }
+
+    /**
+     * Krymper [smallText] til teksten får plass.
+     *
+     * Den ble tegnet sentrert uten å måles, så den lengste linja - «45 km/t over · over taket
+     * for forenklet forelegg · tap av førerrett» - falt av i BEGGE ender. Det som forsvant var
+     * «tap av førerrett», altså poenget med linja, på den mest alvorlige avlesningen appen kan
+     * vise.
+     */
+    private fun fitted(text: String, area: Rect, from: Float, floor: Float) {
+        var size = from
+        smallText.textSize = size
+        val max = area.width() * 0.94f
+        while (size > floor && smallText.measureText(text) > max) {
+            size *= 0.92f
+            smallText.textSize = size
+        }
     }
 
     private fun subtitle(r: SpeedWatch.Reading): String {
@@ -174,9 +228,10 @@ class SpeedometerRenderer(
                 return if (r.limitKmt != null) {
                     "Ingen GPS · fartsgrensen ${r.limitKmt} km/t gjelder fortsatt"
                 } else {
-                    "Ingen GPS - tunnel?"
+                    // Ikke et spørsmål. Sjåføren skal ikke svare på noe under kjøring.
+                    "Ingen GPS · tunnel eller dårlig dekning"
                 }
-            FixFreshness.STALE -> return "Mistet GPS-signalet - venter"
+            FixFreshness.STALE -> return "Mistet GPS-signalet – venter"
             FixFreshness.FRESH -> Unit
         }
 
@@ -187,18 +242,8 @@ class SpeedometerRenderer(
                 val margin = calculator.kmtToNextBand(r.speedKmt, r.limitKmt)
                 if (margin != null && margin <= 10) "$margin km/t til første bot" else "Innenfor"
             }
-            is FineEstimate.SimplifiedFine -> buildString {
-                append("${estimate.overKmt} km/t over")
-                if (estimate.points > 0) append(" · ${estimate.points} prikker")
-                when (estimate.licence) {
-                    no.synth.botometer.fine.LicenceOutcome.VURDERES -> append(" · beslag vurderes")
-                    no.synth.botometer.fine.LicenceOutcome.INNDRAS -> append(" · tap av førerrett")
-                    else -> Unit
-                }
-                if (estimate.uncertain) append(" (usikker)")
-            }
-            is FineEstimate.Prosecution ->
-                "${estimate.overKmt} km/t over · over taket for forenklet forelegg · tap av førerrett"
+            is FineEstimate.SimplifiedFine, is FineEstimate.Prosecution ->
+                ReadingText.consequences(estimate)
         }
     }
 

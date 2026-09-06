@@ -88,13 +88,23 @@ object Tracking {
             return
         }
 
+        // Start FØRST, hold etterpå. Systemet kan nekte oss å be om tjenesten - fra Android 12
+        // er en forgrunnstjeneste startet fra bakgrunnen forbudt, og CONNECTION-holderen tas
+        // nettopp når telefonen kobles til bilen, som godt kan skje mens appen ligger i
+        // bakgrunnen. Talte vi holderen likevel, ville `isActive` sagt «sporingen går» mens
+        // ingenting leste posisjon, og bilskjermen ville aldri meldt fra om at den var stoppet.
+        //
+        // Kalles alltid, ikke bare for den første holderen: blir tjenesten drept av systemet,
+        // er tellingen vår fortsatt full, og en betinget start ville aldri startet den igjen.
+        // `onStartCommand` tåler å bli kalt om igjen.
+        if (!LocationForegroundService.start(context)) {
+            Diagnostics.tracking("$holder fikk ikke startet tjenesten", holders.current)
+            return
+        }
+
         appContext = context.applicationContext
         holders.add(holder)
         Diagnostics.tracking("$holder tok sporingen", holders.current)
-        // Alltid, ikke bare når den første holderen kommer: blir tjenesten drept av systemet,
-        // er tellingen vår fortsatt full, og da ville en betinget start aldri startet den igjen.
-        // `onStartCommand` tåler å bli kalt om igjen.
-        LocationForegroundService.start(context)
     }
 
     /**

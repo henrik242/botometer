@@ -4,11 +4,11 @@ import android.Manifest
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Intent
-import android.graphics.Color
 import android.net.Uri
 import android.provider.Settings as AndroidSettings
 import android.os.Build
 import android.os.Bundle
+import android.graphics.Typeface
 import android.os.SystemClock
 import android.view.Gravity
 import android.view.View
@@ -23,8 +23,10 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.app.ActivityCompat
 import androidx.car.app.connection.CarConnection
 import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.Lifecycle
@@ -33,9 +35,10 @@ import androidx.lifecycle.repeatOnLifecycle
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import no.synth.botometer.alert.ReadingText
+import no.synth.botometer.alert.Severity
 import no.synth.botometer.alert.SpeedWatch
 import no.synth.botometer.alert.SpeedingAlerts
-import no.synth.botometer.fine.FineEstimate
 import no.synth.botometer.fine.FineTableRepository
 import no.synth.botometer.fine.TableStatus
 import no.synth.botometer.limit.ManualLimit
@@ -65,8 +68,15 @@ import no.synth.botometer.speed.TrackingHolders
  */
 class MainActivity : ComponentActivity() {
 
+    private lateinit var app: BotometerApp
     private lateinit var tables: FineTableRepository
     private lateinit var settings: Settings
+
+    // Leses fra ressursene, ikke hardkodet: values-night/ gir dem mørk variant, og uten det var
+    // skjermen hvit også om natta - en lyskaster i kupeen foran frontruta.
+    private val primary by lazy { ContextCompat.getColor(this, R.color.text) }
+    private val secondary by lazy { ContextCompat.getColor(this, R.color.text_secondary) }
+    private val muted by lazy { ContextCompat.getColor(this, R.color.muted) }
 
     private lateinit var headline: TextView
     private lateinit var subline: TextView
@@ -93,13 +103,6 @@ class MainActivity : ComponentActivity() {
      * ble hovedbryteren stående og vise fart i et sekund etter at den var slått av.
      */
     private var lastReading: SpeedWatch.Reading? = null
-
-    /**
-     * Leses asynkront fra Android Auto. null til første svar kommer - og det skillet er verdt å
-     * vise: «ikke lest ennå» og «ikke tilkoblet» er to helt forskjellige svar på hvorfor
-     * bilskjermen ikke viser noe.
-     */
-    private var carConnectionType: Int? = null
 
     /**
      * Tilbake-knappen trykket sist, på monoton klokke. 0 = ikke trykket i denne runden.
@@ -154,13 +157,14 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        tables = (application as BotometerApp).createFineTableRepository()
+        app = application as BotometerApp
+        tables = app.createFineTableRepository()
         settings = Settings(this)
 
         headline = TextView(this).apply { textSize = 26f }
         subline = TextView(this).apply {
             textSize = 14f
-            setTextColor(Color.rgb(120, 120, 125))
+            setTextColor(secondary)
         }
         problems = TextView(this).apply {
             textSize = 14f
@@ -168,16 +172,19 @@ class MainActivity : ComponentActivity() {
         }
         // Selve speedometeret. Stort nok til å leses i periferien fra førersetet, uten
         // animasjon: det skal kunne sees i et øyekast, ikke studeres.
-        speedValue = TextView(this).apply { textSize = 64f }
+        speedValue = TextView(this).apply {
+            textSize = 64f
+            setTypeface(null, Typeface.BOLD)
+        }
         speedFine = TextView(this).apply { textSize = 26f }
         speedDetail = TextView(this).apply {
             textSize = 13f
-            setTextColor(Color.rgb(120, 120, 125))
+            setTextColor(secondary)
         }
         manualRow = buildManualRow()
         speedCard = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(0, 24, 0, 24)
+            setPadding(0, dp(8), 0, dp(8))
             addView(speedValue)
             addView(speedFine)
             addView(speedDetail)
@@ -224,7 +231,6 @@ class MainActivity : ComponentActivity() {
         val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
 
-            addView(versionLine())
             addView(headline)
             addView(subline)
             addView(speedCard)
@@ -247,7 +253,15 @@ class MainActivity : ComponentActivity() {
                     // Bryteren skal virke i det den vippes, ikke ved neste oppstart. Av betyr
                     // av for alle flatene, også bil-økta: den som slår av appen på telefonen
                     // mens den står og sporer for bilskjermen, mener den som står og sporer.
-                    if (enabled) startTracking() else Tracking.stopAll()
+                    if (enabled) {
+                        startTracking()
+                        // Holderen for bilforbindelsen ble avvist mens appen var av, og
+                        // CarConnection leverer bare ved endring - uten dette var appen uten
+                        // den resten av turen.
+                        (application as BotometerApp).applyCarConnectionHolder()
+                    } else {
+                        Tracking.stopAll()
+                    }
                     updateKeepScreenOn()
                     lastReading = null
                 }
@@ -292,6 +306,10 @@ class MainActivity : ComponentActivity() {
                     },
                 )
             )
+            // Versjonslinja hører til her, ikke øverst. Den er diagnostikk - `copyDiagnostics`
+            // setter den allerede først i rapporten - og øverst kostet den den første linja du
+            // leser når du åpner appen på et rødt lys.
+            addView(versionLine())
             addView(diagnostics)
         }
 
@@ -303,7 +321,7 @@ class MainActivity : ComponentActivity() {
             val bars = insets.getInsets(
                 WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout()
             )
-            view.setPadding(48 + bars.left, 64 + bars.top, 48 + bars.right, 64 + bars.bottom)
+            view.setPadding(dp(16) + bars.left, dp(20) + bars.top, dp(16) + bars.right, dp(20) + bars.bottom)
             insets
         }
 
@@ -311,17 +329,20 @@ class MainActivity : ComponentActivity() {
 
         // Sier om telefonen i det hele tatt tror den er koblet til en bil. Er den ikke det,
         // vises et fartsvarsel bare på telefonen - og det er hele forklaringen.
+        //
+        // Leses fra [BotometerApp], som allerede abonnerer prosessvidt. Et eget abonnement her
+        // ville vært det samme svaret hentet to ganger, og det ene som døde med aktiviteten.
         runCatching {
-            CarConnection(this).type.observe(this) { type ->
-                carConnectionType = type
-                render()
-            }
-        }
+            CarConnection(this).type.observe(this) { render() }
+        }.onFailure { Diagnostics.carConnectionFailed(it.message ?: it.javaClass.simpleName) }
 
         onBackPressedDispatcher.addCallback(this, doubleBackToExit)
 
         observeSpeed()
-        askPermissions()
+        // Bare første gang, og bare ved en ekte oppstart. Dialogen sto tidligere over en skjerm
+        // der det eneste synlige var et byggnummer, hver eneste gang appen ble åpnet - før
+        // brukeren hadde lest et ord om hva Botometer er. Etterpå er det knappen som spør.
+        if (savedInstanceState == null && !settings.hasAskedForPermissions) askPermissions()
         refreshIfStale()
     }
 
@@ -405,11 +426,16 @@ class MainActivity : ComponentActivity() {
         ManualLimit.choices.forEach { addView(manualButton(it)) }
     }
 
+    /**
+     * `minWidth = 0` strippet plattformens minstebredde og ga treffområder på rundt 40dp -
+     * under retningslinjenes 48dp, truffet med én hånd i en bil i bevegelse. Nå settes 48dp
+     * eksplisitt i stedet for å fjerne grensen.
+     */
     private fun manualButton(kmt: Int?) = Button(this).apply {
         text = kmt?.toString() ?: getString(R.string.manual_limit_auto)
         textSize = 14f
-        minWidth = 0
-        minimumWidth = 0
+        minWidth = dp(48)
+        minimumWidth = dp(48)
         setOnClickListener {
             ManualLimit.set(kmt)
             highlightManual()
@@ -426,7 +452,10 @@ class MainActivity : ComponentActivity() {
             } else {
                 button.text.toString() == active.toString()
             }
-            button.setTextColor(if (selected) Color.BLACK else Color.rgb(150, 150, 155))
+            // Farge alene bar valget, på 2,94:1 mot bakgrunnen. Hvilken grense som gjelder
+            // endrer betydningen av hvert tall over den, så den skal ikke være så vidt synlig.
+            button.setTextColor(if (selected) primary else muted)
+            button.setTypeface(null, if (selected) Typeface.BOLD else Typeface.NORMAL)
         }
     }
 
@@ -440,48 +469,32 @@ class MainActivity : ComponentActivity() {
         manualRow.visibility = if (settings.enabled) View.VISIBLE else View.GONE
 
         if (reading == null) {
-            speedValue.setTextColor(Color.rgb(150, 150, 150))
+            speedValue.setTextColor(muted)
             speedValue.text = "--"
-            speedFine.setTextColor(Color.rgb(150, 150, 150))
+            speedFine.setTextColor(muted)
             speedFine.text = when {
-                !settings.enabled -> "Av"
-                !GpsSpeedSource.hasLocationPermission(this) -> "Ingen posisjon"
+                !settings.enabled -> "Slått av"
+                // «Ingen posisjon» leste som «GPS-en har ikke fix», altså nabotilstanden én
+                // linje ned. To forskjellige feil kan ikke ha nesten samme ord.
+                !GpsSpeedSource.hasLocationPermission(this) -> "Mangler tilgang"
                 else -> "Venter på GPS"
             }
             speedDetail.text = when {
-                !settings.enabled -> "Slå den på igjen under INNSTILLINGER"
-                !GpsSpeedSource.hasLocationPermission(this) -> "Gi posisjonstilgang for å måle fart"
-                else -> "Sporingen går - første fix kan ta noen sekunder"
+                !settings.enabled -> "Slå på Botometer under Innstillinger lenger ned"
+                !GpsSpeedSource.hasLocationPermission(this) ->
+                    "Gi Botometer tilgang til posisjon for å måle fart"
+                else -> "Sporingen går – første posisjon kan ta noen sekunder"
             }
             return
         }
 
-        val lost = reading.freshness == FixFreshness.LOST
-        val estimate = reading.estimate
-        val accent = when {
-            lost -> Color.rgb(150, 150, 150)
-            estimate is FineEstimate.NoOffence -> Color.rgb(30, 140, 70)
-            estimate is FineEstimate.UnknownLimit -> Color.rgb(150, 150, 150)
-            estimate is FineEstimate.SimplifiedFine ->
-                if (estimate.points == 0) Color.rgb(190, 150, 20) else Color.rgb(190, 110, 20)
-            estimate is FineEstimate.Prosecution -> Color.rgb(200, 45, 45)
-            else -> Color.rgb(150, 150, 150)
-        }
+        val accent = accentFor(ReadingText.severity(reading))
 
-        // «--» og ikke «0»: null er en måling, og når signalet er borte har vi ingen. Et nulltall
-        // ville dessuten sett ut som at bilen står stille.
         speedValue.setTextColor(accent)
-        speedValue.text = if (lost) "--" else "${reading.speedKmt.toInt()}"
+        speedValue.text = ReadingText.speed(reading)
 
         speedFine.setTextColor(accent)
-        speedFine.text = when {
-            lost -> "Ingen GPS"
-            estimate is FineEstimate.UnknownLimit -> "Ukjent grense"
-            estimate is FineEstimate.NoOffence -> "Ingen bot"
-            estimate is FineEstimate.SimplifiedFine -> "${nok(estimate.amountNok)} kr"
-            estimate is FineEstimate.Prosecution -> "Anmeldelse"
-            else -> ""
-        }
+        speedFine.text = ReadingText.headline(reading)
 
         speedDetail.text = buildString {
             when (reading.freshness) {
@@ -490,7 +503,7 @@ class MainActivity : ComponentActivity() {
                     append("Ingen GPS")
                     reading.limitKmt?.let { append(" · fartsgrensen $it km/t gjelder fortsatt") }
                 }
-                FixFreshness.STALE -> append("Mistet GPS-signalet - venter")
+                FixFreshness.STALE -> append("Mistet GPS-signalet – venter")
                 FixFreshness.FRESH -> {
                     append("km/t")
                     reading.limitKmt?.let { append("  ·  grense $it") }
@@ -500,21 +513,27 @@ class MainActivity : ComponentActivity() {
                     if (!reading.manualLimit && reading.match?.confidence == MatchConfidence.LOW) {
                         append(" (usikkert vegvalg)")
                     }
-                    when (estimate) {
-                        is FineEstimate.SimplifiedFine -> {
-                            append("  ·  ${estimate.overKmt} km/t over")
-                            if (estimate.points > 0) append("  ·  ${estimate.points} prikker")
-                        }
-                        is FineEstimate.Prosecution -> append("  ·  ${estimate.overKmt} km/t over")
-                        else -> Unit
-                    }
+                    ReadingText.consequences(reading.estimate, separator = "  ·  ")
+                        .takeIf { it.isNotEmpty() }
+                        ?.let { append("  ·  $it") }
                 }
             }
         }
     }
 
-    private fun nok(amount: Int) = amount.toString()
-        .reversed().chunked(3).joinToString(" ").reversed()
+    /**
+     * Telefonpaletten. Mørk tekst på lys bunn, så den kan ikke være bilskjermens: de fargene er
+     * valgt mot svart og lyser opp. Alle ligger på minst 4,5:1 mot hvitt - den gamle gule på
+     * 190,150,20 lå på 2,78:1, altså det minst lesbare på skjermen, og den markerte nettopp den
+     * tilstanden du fortsatt kan gjøre noe med.
+     */
+    private fun accentFor(severity: Severity): Int = when (severity) {
+        Severity.LOST, Severity.UNKNOWN -> ContextCompat.getColor(this, R.color.muted)
+        Severity.NONE -> ContextCompat.getColor(this, R.color.ok)
+        Severity.FINE -> ContextCompat.getColor(this, R.color.fine)
+        Severity.POINTS -> ContextCompat.getColor(this, R.color.points)
+        Severity.PROSECUTION -> ContextCompat.getColor(this, R.color.prosecution)
+    }
 
     override fun onResume() {
         super.onResume()
@@ -528,7 +547,7 @@ class MainActivity : ComponentActivity() {
 
     private fun versionLine() = TextView(this).apply {
         textSize = 12f
-        setTextColor(Color.rgb(120, 120, 125))
+        setTextColor(secondary)
         setTextIsSelectable(true)
         // versionCode er antall commits. Er den lavere enn commiten du tror du tester, ligger
         // det en gammel APK på telefonen og alt annet er målt på feil kode.
@@ -537,12 +556,19 @@ class MainActivity : ComponentActivity() {
 
     private fun heading(title: String) = TextView(this).apply {
         textSize = 13f
-        setTextColor(Color.rgb(120, 120, 125))
-        setPadding(0, 48, 0, 0)
+        setTextColor(secondary)
+        setPadding(0, dp(16), 0, 0)
         text = title
     }
 
     private fun gap() = TextView(this).apply { textSize = 6f; text = "" }
+
+    /**
+     * `setPadding` tar PIKSLER. Alle avstandene var hardkodede pikselverdier, så sidemargen var
+     * 16dp på en 3x-telefon og 12dp på en 4x - teksten krøp mot kanten nettopp på skjermene med
+     * flest piksler å ta av. Tekststørrelsene var aldri rammet; `setTextSize(float)` er sp.
+     */
+    private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
 
     /** Bryter med forklaring under. Forklaringen er ikke pynt: alle tre koster noe. */
     private fun toggle(
@@ -566,7 +592,7 @@ class MainActivity : ComponentActivity() {
         addView(
             TextView(this@MainActivity).apply {
                 textSize = 12f
-                setTextColor(Color.rgb(120, 120, 125))
+                setTextColor(secondary)
                 text = getString(helpRes)
             }
         )
@@ -590,25 +616,40 @@ class MainActivity : ComponentActivity() {
 
         // Ett svar på «virker det?», øverst, i klartekst. Rangert etter hva som stopper mest.
         val trouble = buildList {
-            if (!settings.enabled) add("Botometer er slått av - ingen fart og ingen varsler")
-            if (!location) add("Posisjonstilgang mangler - appen viser ingen fart")
+            if (!location && permissionsAreStuck()) {
+                add("Posisjonstilgang er avslått – gi den i Innstillinger")
+            } else if (!location) {
+                add("Posisjonstilgang mangler – appen viser ingen fart")
+            }
             if (location && !background) add("«Tillat alltid» mangler - bilskjermen får ingen fart")
             if (!notifications) add("Varsler er slått av - ingen fartsvarsler noe sted")
             if (t.stale) add("Bøtesatsene er over ett år gamle")
             if (crash != null) add("Appen har krasjet - detaljer i diagnostikken")
         }
 
-        headline.text = if (trouble.isEmpty()) "Klar" else "Trenger oppsett"
+        // Tre tilstander, ikke to. En app du selv har slått av «trenger» ikke oppsett, og å bli
+        // irettesatt i oransje for sitt eget valg er å bli fortalt at man gjorde noe galt.
+        headline.text = when {
+            !settings.enabled -> "Slått av"
+            trouble.isEmpty() -> "Klar"
+            else -> "Trenger oppsett"
+        }
         headline.setTextColor(
-            if (trouble.isEmpty()) Color.rgb(30, 140, 70) else Color.rgb(190, 110, 20)
+            when {
+                !settings.enabled -> muted
+                trouble.isEmpty() -> ContextCompat.getColor(this, R.color.ok)
+                else -> ContextCompat.getColor(this, R.color.points)
+            }
         )
         // Satsversjonen står her uansett, også når noe er galt: den er svaret på «hvilke tall
         // regner appen med nå», og et automatisk oppdatert sett skal være synlig med én gang -
         // ikke gjemt bak diagnostikken.
-        subline.text = if (trouble.isEmpty()) {
-            "Satser ${t.table.versjon} · fartsgrenser fra NVDB"
-        } else {
-            "${trouble.size} ting å ordne · satser ${t.table.versjon}"
+        subline.text = when {
+            !settings.enabled -> "Ingen sporing og ingen varsler · satser ${t.table.versjon}"
+            trouble.isEmpty() -> "Satser ${t.table.versjon} · fartsgrenser fra Vegvesenet (NVDB)"
+            // «1 ting å ordne» er ikke norsk.
+            trouble.size == 1 -> "Én ting å ordne · satser ${t.table.versjon}"
+            else -> "${trouble.size} ting å ordne · satser ${t.table.versjon}"
         }
 
         problems.text = trouble.joinToString("\n") { "⚠ $it" }
@@ -616,6 +657,9 @@ class MainActivity : ComponentActivity() {
 
         // Fikseknappene følger problemene, ikke omvendt.
         fixPermissions.visibility = if (!location || !notifications) View.VISIBLE else View.GONE
+        fixPermissions.text = getString(
+            if (permissionsAreStuck()) R.string.open_app_settings else R.string.grant_permissions
+        )
         fixBackground.visibility = if (location && !background) View.VISIBLE else View.GONE
         clearCrash.visibility = if (crash != null) View.VISIBLE else View.GONE
 
@@ -689,7 +733,7 @@ class MainActivity : ComponentActivity() {
         appendLine()
 
         appendLine("FARTSVARSLER I BILEN")
-        append(CarNotificationDiagnostics.summary(this@MainActivity, carConnectionType))
+        append(CarNotificationDiagnostics.summary(this@MainActivity, app.carConnectionType))
         appendLine()
 
         appendLine("DIAGNOSTIKK")
@@ -768,7 +812,25 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /**
+     * Etter to avslag er tillatelsen avslått permanent, og `requestPermissions` returnerer med
+     * én gang uten å vise noe. «Gi tilganger» ble da en knapp som ikke gjorde noe i det hele
+     * tatt, uten en eneste beskjed - og det er sluttilstanden for alle som avviste den første
+     * dialogen i refleks. Er vi der, sendes brukeren til innstillingssiden i stedet.
+     */
+    private fun permissionsAreStuck(): Boolean =
+        settings.hasAskedForPermissions &&
+            !GpsSpeedSource.hasLocationPermission(this) &&
+            !ActivityCompat.shouldShowRequestPermissionRationale(
+                this, Manifest.permission.ACCESS_FINE_LOCATION
+            )
+
     private fun askPermissions() {
+        if (permissionsAreStuck()) {
+            openAppSettings()
+            return
+        }
+        settings.hasAskedForPermissions = true
         val needed = buildList {
             add(Manifest.permission.ACCESS_FINE_LOCATION)
             add(Manifest.permission.ACCESS_COARSE_LOCATION)

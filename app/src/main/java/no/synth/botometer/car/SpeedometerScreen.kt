@@ -5,6 +5,7 @@ import androidx.car.app.AppManager
 import androidx.car.app.CarContext
 import androidx.car.app.CarToast
 import androidx.car.app.Screen
+import androidx.car.app.SurfaceCallback
 import androidx.car.app.model.Action
 import androidx.car.app.model.ActionStrip
 import androidx.car.app.model.CarColor
@@ -18,6 +19,7 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import no.synth.botometer.Diagnostics
 import no.synth.botometer.R
 import no.synth.botometer.Settings
 import no.synth.botometer.alert.SpeedWatch
@@ -46,7 +48,9 @@ class SpeedometerScreen(carContext: CarContext) : Screen(carContext), DefaultLif
     private val watch = SpeedWatch(carContext)
 
     private val renderer = SpeedometerRenderer(
-        carContext, watch.calculator, ratesStale = watch.ratesStale
+        watch.calculator,
+        ratesStale = watch.ratesStale,
+        darkMode = { carContext.isDarkMode },
     )
 
     private var collectJob: Job? = null
@@ -76,14 +80,26 @@ class SpeedometerScreen(carContext: CarContext) : Screen(carContext), DefaultLif
     }
 
     override fun onStart(owner: LifecycleOwner) {
-        carContext.getCarService(AppManager::class.java).setSurfaceCallback(renderer)
+        surfaceCallback(renderer)
         startTracking()
     }
 
     override fun onStop(owner: LifecycleOwner) {
         stopDrawing()
         // Må nullstilles, ellers tegner rendereren mot en død surface neste gang skjermen vises.
-        carContext.getCarService(AppManager::class.java).setSurfaceCallback(null)
+        surfaceCallback(null)
+    }
+
+    /**
+     * `setSurfaceCallback` er et kall over til verten, og dokumentasjonen lover både
+     * SecurityException og HostException. [onStop] kjører nettopp mens verten rives ned - ved
+     * frakobling eller om verten krasjer - og en død binder der ville tatt appen med seg under
+     * opprydding. Det er ingenting å redde i den situasjonen uansett.
+     */
+    private fun surfaceCallback(callback: SurfaceCallback?) {
+        runCatching {
+            carContext.getCarService(AppManager::class.java).setSurfaceCallback(callback)
+        }.onFailure { Diagnostics.carSurfaceFailed(it.message ?: it.javaClass.simpleName) }
     }
 
     private fun startTracking() {
@@ -104,10 +120,17 @@ class SpeedometerScreen(carContext: CarContext) : Screen(carContext), DefaultLif
         // et tall som gjelder, så vi ber om templaten på nytt og lar den si hva som skjedde.
         feedJob?.cancel()
         feedJob = lifecycleScope.launch {
-            SpeedFeed.fixes.collect {
-                if (it != null) return@collect
-                trackingStopped = !Tracking.isActive
-                invalidate()
+            var wasStopped = trackingStopped
+            SpeedFeed.fixes.collect { fix ->
+                // Begge retninger. Bare null-kanten var halve jobben: slo brukeren hovedbryteren
+                // av og på igjen, sto bilskjermen på «Avslått» mens fixene strømmet inn bak den,
+                // helt til verten tilfeldigvis ba om templaten på nytt.
+                val stopped = fix == null && !Tracking.isActive
+                trackingStopped = stopped
+                if (stopped != wasStopped) {
+                    wasStopped = stopped
+                    invalidate()
+                }
             }
         }
     }
@@ -217,7 +240,15 @@ class SpeedometerScreen(carContext: CarContext) : Screen(carContext), DefaultLif
     private fun exit() {
         stopDrawing()
         Tracking.stopAll()
-        finish()
+        // `finish()` og ikke `carContext.finishCarApp()` var en stille no-op. Screen.finish()
+        // går til ScreenManager.remove, og den sier det rett ut: «If this screen is the only
+        // Screen in the stack, it will not be removed.» Denne skjermen ER den eneste - økta
+        // returnerer den fra onCreateScreen og vi pusher aldri noe over den.
+        //
+        // Resultatet var at «Avslutt» stoppet sporingen og lot skjermen stå igjen med siste
+        // frame: en fart og et beløp som ikke lenger gjaldt, uten noen vei ut. onStop kjørte
+        // heller aldri, så surface-callbacken ble aldri koblet fra.
+        carContext.finishCarApp()
     }
 
     private fun requestPermission() {

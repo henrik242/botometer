@@ -18,6 +18,16 @@ import no.synth.botometer.speed.TrackingHolders
  */
 open class BotometerApp : Application() {
 
+    private var carConnection: CarConnection? = null
+
+    /**
+     * Sist observerte bilforbindelse. null til første svar kommer - og skillet er verdt å ha:
+     * «ikke lest ennå» og «ikke tilkoblet» er to forskjellige svar på hvorfor bilskjermen ikke
+     * viser noe. Leses av telefon-appens diagnostikk, så den slipper å abonnere selv.
+     */
+    var carConnectionType: Int? = null
+        private set
+
     override fun onCreate() {
         super.onCreate()
         // Først av alt: et krasj under oppstart er også et krasj som skal kunne vises fram.
@@ -44,16 +54,35 @@ open class BotometerApp : Application() {
      */
     private fun followCarConnection() {
         runCatching {
-            CarConnection(this).type.observeForever { type ->
-                val connected = type == CarConnection.CONNECTION_TYPE_PROJECTION ||
-                    type == CarConnection.CONNECTION_TYPE_NATIVE
-                if (connected && GpsSpeedSource.hasLocationPermission(this)) {
-                    Tracking.acquire(this, TrackingHolders.Holder.CONNECTION)
-                } else {
-                    Tracking.release(TrackingHolders.Holder.CONNECTION)
-                }
+            // I et felt, ikke bare lokalt: LiveData-en holdes ellers i live bare av
+            // BroadcastReceiver-en rammeverket har registrert for den. Det virker, men å hvile
+            // på det er å hvile på en implementasjonsdetalj.
+            val connection = CarConnection(this).also { carConnection = it }
+            connection.type.observeForever { type ->
+                carConnectionType = type
+                applyCarConnectionHolder()
             }
         }.onFailure { Diagnostics.carConnectionFailed(it.message ?: it.javaClass.simpleName) }
+    }
+
+    /**
+     * Tar eller slipper CONNECTION-holderen ut fra sist observerte tilkobling.
+     *
+     * Egen funksjon fordi LiveData bare leverer ved ENDRING. Ble holderen avvist da signalet kom
+     * - hovedbryteren var av, tilgangen manglet, eller systemet nektet oss å starte tjenesten
+     * fra bakgrunnen - eller ryddet «Avslutt» den bort, så kommer det ingen ny hendelse før
+     * telefonen fysisk kobles fra og til igjen. Uten en vei tilbake var appen uten
+     * bilforbindelses-holder resten av turen, altså akkurat den tilstanden holderen finnes for
+     * å hindre.
+     */
+    fun applyCarConnectionHolder() {
+        val connected = carConnectionType == CarConnection.CONNECTION_TYPE_PROJECTION ||
+            carConnectionType == CarConnection.CONNECTION_TYPE_NATIVE
+        if (connected && GpsSpeedSource.hasLocationPermission(this)) {
+            Tracking.acquire(this, TrackingHolders.Holder.CONNECTION)
+        } else {
+            Tracking.release(TrackingHolders.Holder.CONNECTION)
+        }
     }
 
     /** Application-context med vilje: repoet trenger bare filesDir og assets. */

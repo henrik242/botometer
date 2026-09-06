@@ -15,7 +15,6 @@ import no.synth.botometer.MainActivity
 import no.synth.botometer.R
 import no.synth.botometer.Settings
 import no.synth.botometer.fine.FineEstimate
-import no.synth.botometer.fine.LicenceOutcome
 
 /**
  * Varsler når farten krysser inn i et nytt bøtenivå.
@@ -45,31 +44,26 @@ class SpeedingAlerts(
         when (val decision = policy.next(reading.estimate)) {
             is AlertPolicy.Decision.Ignore -> Unit
             is AlertPolicy.Decision.Withdraw ->
+                // Ikke stille: et varsel som ble stående viser en bot du ikke lenger tjener opp,
+                // og det er en synlig løgn på skjermen.
                 runCatching { CarNotificationManager.from(context).cancel(NOTIFICATION_ID) }
+                    .onFailure { Diagnostics.alertFailed("kunne ikke trekke tilbake: ${it.message}") }
             is AlertPolicy.Decision.Alert -> post(decision.estimate)
         }
     }
 
     private fun post(estimate: FineEstimate) {
+        // «Bot: 4 800 kr» og ikke bare beløpet: i den sammenslåtte varselskyggen er et tall
+        // alene uten kontekst, og de fem tegnene overlever avkortingen.
         val title = when (estimate) {
-            is FineEstimate.SimplifiedFine -> "${nok(estimate.amountNok)} kr"
+            is FineEstimate.SimplifiedFine -> "Bot: ${ReadingText.nok(estimate.amountNok)} kr"
             is FineEstimate.Prosecution -> "Anmeldelse"
             else -> return
         }
 
         val text = when (estimate) {
-            is FineEstimate.SimplifiedFine -> buildString {
-                append("${estimate.overKmt} km/t over")
-                if (estimate.points > 0) append(" · ${estimate.points} prikker")
-                when (estimate.licence) {
-                    LicenceOutcome.VURDERES -> append(" · førerretten vurderes")
-                    LicenceOutcome.INNDRAS -> append(" · førerretten inndras")
-                    LicenceOutcome.BEHOLDER -> Unit
-                }
-                if (estimate.uncertain) append(" (usikker)")
-            }
-            is FineEstimate.Prosecution ->
-                "${estimate.overKmt} km/t over · over taket for forenklet forelegg"
+            is FineEstimate.SimplifiedFine, is FineEstimate.Prosecution ->
+                ReadingText.consequences(estimate)
             else -> return
         }
 
@@ -108,20 +102,21 @@ class SpeedingAlerts(
             .setContentTitle(title)
             .setContentText(text)
             .setContentIntent(open)
-            // INGEN CATEGORY_NAVIGATION. Den er grunnen til at varselet aldri kom fram i bilen.
+            // INGEN CATEGORY_NAVIGATION.
             //
-            // Verten behandler et navigasjonsvarsel fra en navigasjonsapp som en sving-for-sving-
-            // melding, og de har en egen regel: «will not be displayed if the navigation app is
-            // not the currently active navigation app, or if the app is already displaying
-            // routing information in the navigation template».
+            // Verten har en egen regel for sving-for-sving-varsler: «will not be displayed if
+            // the navigation app is not the currently active navigation app, or if the app is
+            // already displaying routing information in the navigation template». Botometer er
+            // alltid i én av de to tilstandene - eier Maps skjermen, er vi ikke den aktive
+            // navigasjonsappen; eier vi skjermen, tegner vi i NavigationTemplate.
             //
-            // Botometer er alltid i én av de to tilstandene. Eier Maps skjermen, er vi ikke den
-            // aktive navigasjonsappen. Eier vi skjermen, tegner vi i NavigationTemplate. Begge
-            // grenene undertrykker varselet, så det kunne aldri vises - mens telefonen viste det
-            // hver gang, siden regelen er vertens og ikke systemets.
-            //
-            // Dette er ikke et sving-for-sving-varsel. Det skal vises nettopp når vi IKKE eier
-            // skjermen, og da skal det ikke utgi seg for å være noe annet.
+            // Vær ærlig om beviset: CarAppExtender-dokumentasjonen sier at et TBT-varsel krever
+            // BÅDE `setOngoing(true)` OG kategorien, og vi satte aldri `setOngoing`. Etter den
+            // ordlyden var varselet vårt strengt tatt ikke et TBT-varsel, og regelen gjaldt
+            // ikke. Kategorien er altså ikke bevist å være årsaken - den er fjernet fordi dette
+            // uansett IKKE er et sving-for-sving-varsel, og et varsel skal ikke utgi seg for å
+            // være noe annet enn det er. Kommer varselet fortsatt ikke fram, er det et annet
+            // spor: kanalens viktighet, eller vertens egne varselinnstillinger.
             .setPriority(
                 if (phone) NotificationCompat.PRIORITY_HIGH else NotificationCompat.PRIORITY_LOW
             )
@@ -166,7 +161,14 @@ class SpeedingAlerts(
                 NotificationManagerCompat.from(context).notify(id, notification.build())
             }
         }.onSuccess {
-            Diagnostics.alertPosted(title, text, Diagnostics.carSessionIsActive)
+            // «Ikke kastet» er ikke «vist». Er varsler avslått for appen, gjør notify()
+            // ingenting og kaster ingenting, og rapporten sa «varsel sendt» om noe ingen så.
+            Diagnostics.alertPosted(
+                title,
+                text,
+                carActive = Diagnostics.carSessionIsActive,
+                delivered = NotificationManagerCompat.from(context).areNotificationsEnabled(),
+            )
         }.onFailure {
             Diagnostics.alertFailed(it.message ?: it.javaClass.simpleName)
         }
@@ -188,11 +190,8 @@ class SpeedingAlerts(
      * og så husket hva som skjedde. Nå er det ett trykk fra førersetet med tenningen på.
      */
     fun sendTestAlert() {
-        notify(NOTIFICATION_ID, "${nok(1250)} kr", "1 km/t over · testvarsel")
+        notify(NOTIFICATION_ID, "Testvarsel: ${ReadingText.nok(1250)} kr", "Slik ser et fartsvarsel ut")
     }
-
-    private fun nok(amount: Int) = amount.toString()
-        .reversed().chunked(3).joinToString(" ").reversed()
 
     companion object {
         /**

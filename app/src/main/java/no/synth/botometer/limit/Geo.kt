@@ -8,9 +8,7 @@ import kotlin.math.sqrt
 
 data class LatLon(val lat: Double, val lon: Double)
 
-data class BBox(val west: Double, val south: Double, val east: Double, val north: Double) {
-    fun contains(p: LatLon) = p.lat in south..north && p.lon in west..east
-}
+data class BBox(val west: Double, val south: Double, val east: Double, val north: Double)
 
 /**
  * Lokal ekvirektangulær projeksjon rundt et referansepunkt. På noen få kilometer er feilen

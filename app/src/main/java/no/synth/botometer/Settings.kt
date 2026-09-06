@@ -53,6 +53,18 @@ class Settings(context: Context) {
         get() = prefs.getBoolean(KEY_ENABLED, true)
         set(value) = prefs.edit().putBoolean(KEY_ENABLED, value).apply()
 
+    /**
+     * Om vi har bedt om tilganger før.
+     *
+     * Fra Android 11 er en tillatelse som er avslått to ganger avslått permanent, og
+     * `requestPermissions` returnerer da med én gang uten å vise noe. Uten å vite at vi har
+     * spurt før, kan appen ikke skille «brukeren har ikke sett dialogen ennå» fra «dialogen
+     * kommer aldri mer» - og «Gi tilganger» ble en knapp som ikke gjorde noe.
+     */
+    var hasAskedForPermissions: Boolean
+        get() = prefs.getBoolean(KEY_ASKED, false)
+        set(value) = prefs.edit().putBoolean(KEY_ASKED, value).apply()
+
     /** Til diagnostikkrapporten. En avslått bryter er den første forklaringen å utelukke. */
     fun summary(): String = buildString {
         // Hovedbryteren først: er den av, forklarer den alt annet i rapporten.
@@ -68,5 +80,6 @@ class Settings(context: Context) {
         const val KEY_PHONE_ALERTS = "phoneAlerts"
         const val KEY_CAR_ALERTS = "carAlerts"
         const val KEY_ENABLED = "enabled"
+        const val KEY_ASKED = "hasAskedForPermissions"
     }
 }

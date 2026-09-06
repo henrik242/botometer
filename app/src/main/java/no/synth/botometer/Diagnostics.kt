@@ -30,6 +30,7 @@ object Diagnostics {
     private val carSession = AtomicReference<String?>(null)
     private val carSessionActive = java.util.concurrent.atomic.AtomicBoolean(false)
     private val carConnectionError = AtomicReference<String?>(null)
+    private val carSurfaceError = AtomicReference<String?>(null)
 
     /**
      * De siste endringene i hvem som holder på sporingen, nyeste sist.
@@ -147,11 +148,20 @@ object Diagnostics {
     /**
      * @param carActive om bil-økta var i live i det varselet ble postet. Det er nettopp den
      * kombinasjonen som avgjør om verten hadde noen mulighet til å vise det.
+     * @param delivered om varsler i det hele tatt er slått på for appen. `notify` kaster ikke
+     * når de er av; den gjør ingenting, og da ser et forkastet varsel ut som et sendt varsel.
      */
-    fun alertPosted(title: String, text: String, carActive: Boolean) {
+    fun alertPosted(title: String, text: String, carActive: Boolean, delivered: Boolean) {
         alertsPosted.incrementAndGet()
         lastAlert.set(
-            "«$title · $text» ${klokke()}" + if (carActive) " (bil-økt aktiv)" else " (INGEN bil-økt)"
+            buildString {
+                append("«$title · $text» ${klokke()}")
+                append(if (carActive) " (bil-økt aktiv)" else " (INGEN bil-økt)")
+                // notify() kaster ikke når varsler er avslått - den gjør ingenting. Uten dette
+                // sto det «varsel sendt» om et varsel systemet forkastet i stillhet, altså
+                // nøyaktig den feilen resten av denne fila finnes for å avsløre.
+                if (!delivered) append(" - MEN VARSLER ER AV, så ingen så det")
+            }
         )
     }
 
@@ -188,6 +198,11 @@ object Diagnostics {
         carConnectionError.set(message)
     }
 
+    /** Et kall over til bilverten som ikke gikk gjennom. Sjelden, og usynlig uten denne linja. */
+    fun carSurfaceFailed(message: String) {
+        carSurfaceError.set("$message ${klokke()}")
+    }
+
     fun trackingLines(): String = buildString {
         if (trackingActive.get()) {
             appendLine("✓ Sporing: i gang (holdere: ${trackingHolders.get()})")
@@ -197,6 +212,7 @@ object Diagnostics {
             appendLine("  bilen. CAR finnes bare om Botometer er åpnet i bilen denne turen.")
         }
         carConnectionError.get()?.let { appendLine("✗ Kunne ikke lese bilforbindelsen: $it") }
+        carSurfaceError.get()?.let { appendLine("✗ Feil mot bilskjermen: $it") }
         if (trackingLog.isEmpty()) {
             appendLine("· Ingen endringer registrert ennå")
         } else {

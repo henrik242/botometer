@@ -52,14 +52,6 @@ class LocationForegroundService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        // Hovedbryteren, en gang til. [Tracking] slipper ingen start gjennom når den er av, men
-        // en start kan ligge i kø fra før brukeren slo av, og systemet kan levere en intent på
-        // nytt. Det som leser posisjon skal sjekke selv, ikke stole på at noen andre gjorde det.
-        if (!Settings(this).enabled) {
-            stopSelf()
-            return START_NOT_STICKY
-        }
-
         // startForeground kan nekte, og gjør det som en SecurityException som tar hele appen med
         // seg. Fra Android 14 krever en location-tjeneste at appen er i en «eligible state»: er
         // posisjonstilgangen gitt som «mens appen er i bruk», er den en forgrunnstillatelse, og
@@ -89,6 +81,19 @@ class LocationForegroundService : Service() {
             return START_NOT_STICKY
         }
         Diagnostics.locationServiceStarted()
+
+        // Hovedbryteren, en gang til - men FØRST NÅ, etter at startForeground er kalt.
+        // [Tracking] slipper ingen start gjennom når den er av, men en start kan ligge i kø fra
+        // før brukeren slo av. Det som leser posisjon skal sjekke selv.
+        //
+        // Rekkefølgen er ikke smakssak: etter `startForegroundService` står tjenesten med
+        // `fgRequired`, og legger systemet den ned før `startForeground` er kalt, KRASJER det
+        // appen med «did not then call Service.startForeground()». Å stoppe etterpå er trygt -
+        // da er flagget ryddet.
+        if (!Settings(this).enabled) {
+            stopSelf()
+            return START_NOT_STICKY
+        }
 
         if (job == null) {
             job = scope.launch {
@@ -160,10 +165,17 @@ class LocationForegroundService : Service() {
         /**
          * Selve starten kan også nektes, med ForegroundServiceStartNotAllowedException, før
          * tjenesten i det hele tatt kjører. Samme resonnement: si fra, ikke krasj.
+         *
+         * @return false når systemet nektet oss å be om tjenesten i det hele tatt - typisk
+         * ForegroundServiceStartNotAllowedException fordi prosessen lå i bakgrunnen.
+         *
+         * Svaret betyr noe: [Tracking] skal ikke telle en holder for en tjeneste som aldri
+         * startet. Gjorde den det, ville `Tracking.isActive` sagt «sporingen går» mens
+         * ingenting leste posisjon, og bilskjermen ville aldri meldt fra om at den var stoppet.
          */
-        fun start(context: Context) {
-            val intent = Intent(context, LocationForegroundService::class.java)
+        fun start(context: Context): Boolean =
             runCatching {
+                val intent = Intent(context, LocationForegroundService::class.java)
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                     context.startForegroundService(intent)
                 } else {
@@ -172,8 +184,7 @@ class LocationForegroundService : Service() {
             }.onFailure {
                 Log.e(TAG, "Fikk ikke be om posisjonssporing: ${it.message}")
                 Diagnostics.locationServiceFailed(it.message ?: it.javaClass.simpleName)
-            }
-        }
+            }.isSuccess
 
         fun stop(context: Context) {
             context.stopService(Intent(context, LocationForegroundService::class.java))

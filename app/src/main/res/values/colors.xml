@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Telefonpaletten, lys variant. Alle tekstfargene ligger på minst 4,5:1 mot bakgrunnen.
+
+    Fargene var før hardkodet i MainActivity, valgt for å se riktige ut ved siden av bilskjermens
+    palett - som er valgt mot svart. Mot hvitt lå den gule på 2,78:1, altså det minst lesbare
+    på hele skjermen, og den markerte nettopp det ene tilfellet du fortsatt kan gjøre noe med:
+    en bot uten prikker. Nattvarianten i values-night/ er bilskjermens palett, som allerede er
+    tunet mot mørk bunn.
+-->
+<resources>
+    <color name="background">#FFFDFDFD</color>
+    <color name="text">#FF17171A</color>
+    <!-- Sekundærtekst og hjelpetekst. 6,1:1 - hjelpeteksten er brødtekst på 12sp og må klare
+         4,5:1, ikke bare 3:1. -->
+    <color name="text_secondary">#FF5F5F64</color>
+    <!-- Dempet: «--», «Av», ukjent fartsgrense, uvalgt manuell grense. 5,0:1 -->
+    <color name="muted">#FF6E6E73</color>
+
+    <!-- Alvorlighetsskalaen. Fargen bæres av konsekvensen, ikke av farten. -->
+    <color name="ok">#FF19783C</color>          <!-- ingen bot,      5,2:1 -->
+    <color name="fine">#FF966E00</color>        <!-- bot,            4,6:1 -->
+    <color name="points">#FFA05500</color>      <!-- bot + prikker,  5,3:1 -->
+    <color name="prosecution">#FFC82D2D</color> <!-- anmeldelse,     5,4:1 -->
+</resources>

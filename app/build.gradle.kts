@@ -95,6 +95,10 @@ android {
         release {
             buildConfigField("boolean", "ALLOW_ALL_CAR_HOSTS", "false")
             isMinifyEnabled = true
+            // Ressurskrymping var av selv om R8 var på. Den fjerner ressurser ingen kode viser
+            // til - her først og fremst det androidx og play-services drar med seg - og den er
+            // avhengig av at minify er på, som den allerede var. Ren gevinst i APK-størrelse.
+            isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             signingConfig = if (keystorePath != null) {
                 signingConfigs.getByName("sideload")

@@ -217,6 +217,25 @@ innstilling.
 
 Bilskjermen beholder sin knapp: der finnes det verken tilbake-knapp eller innstillinger.
 
+**Én tekst, tre flater.** `SpeedWatch` sørget for at flatene *regner* på det samme, men ikke for
+at de *sa* det samme, og de hadde rukket å drive fra hverandre: telefonen kuttet farten med
+`toInt()` mens bilen rundet med `roundToInt()` (79,6 km/t ble 79 på telefonen og 80 i bilen -
+avkorting underrapporterer, feil vei i en app om fartsovertredelser), «Ukjent grense» het «Ukjent
+fartsgrense» i bilen, beløpet ble formatert av to forskjellige rutiner, og telefonen droppet tap
+av førerrett og usikkerhetsmerket helt. `ReadingText` eier nå fart, overskrift, konsekvenser og
+beløpsformat; hver flate beholder bare sin egen layout og palett. `Severity` erstatter tre
+`when`-blokker med hver sin `else`-gren, så et femte utfall ikke lenger blir grått og stumt på
+alle tre uten at noe sier fra.
+
+**Farger i ressursene, og en nattvariant.** Appen hadde ikke noe tema i det hele tatt og arvet
+systemets lyse standard med alle farger hardkodet. To konsekvenser: en helhvit skjerm med et 64sp
+tall i en holder foran frontruta er en lyskaster i kupeen, og gulfargen for «bot uten prikker» lå
+på 2,78:1 mot hvitt - det minst lesbare på skjermen, og den markerte nettopp den tilstanden du
+fortsatt kan gjøre noe med. Paletten ligger nå i `values/colors.xml` med en `values-night/`-variant
+(bilskjermens palett, som allerede er tunet mot mørk bunn), og alle tekstfarger er på minst 4,5:1.
+Bilskjermen bytter tilsvarende på `carContext.isDarkMode` - Android Auto skifter hele hodeenheten
+fra bilens lyssensor, mens Botometer sto svart gjennom både dag og natt.
+
 ## Datakilder
 
 | Data | Kilde | Lisens |
@@ -488,7 +507,13 @@ Derfor finnes appen på tre flater i stedet:
 | **Telefonen** | Maps eier bilskjermen | `MainActivity`: samme tall, stor skrift, skjermen holdes våken |
 | **Varsel** | Alltid, så lenge telefonen er koblet til bilen | Heads-up når farten krysser inn i et nytt bøtenivå |
 
-**Bilskjermen har en «Avslutt»-knapp, og den betyr slutt.** Den stopper posisjonssporingen, ikke
+**Bilskjermen har en «Avslutt»-knapp, og den betyr slutt.** Den kalte lenge `Screen.finish()`,
+som er en stille no-op her: `ScreenManager.remove` sier det rett ut - «If this screen is the only
+Screen in the stack, it will not be removed» - og denne skjermen ER den eneste, siden økta
+returnerer den fra `onCreateScreen` og vi aldri pusher noe over den. Knappen stoppet altså
+sporingen og lot skjermen stå igjen med siste frame, uten vei ut. Nå er det
+`carContext.finishCarApp()`.
+ Den stopper posisjonssporingen, ikke
 bare visningen: foreground-servicen legger seg ned og det vedvarende varselet forsvinner. Uten den
 var eneste vei ut av bilskjermen å starte en annen navigasjonsapp - og da lever servicen videre,
 appen leser posisjon, og varselet står, uten at noe på skjermen forklarer hvorfor. En app som
@@ -538,6 +563,17 @@ fra; det er der turen er over. Telefonen holder på sporingen mens speedometeret
 før, så tilbake-knappen der fortsatt slår av GPS-en når telefonen er den eneste flaten i bruk -
 men den slår den ikke lenger av for bilen. Hovedbryteren står over hele tellingen: er den av,
 slipper `Tracking.acquire` ingen holder inn i det hele tatt.
+
+**Holderen tas bare når tjenesten faktisk startet.** Fra Android 12 er det forbudt å starte en
+forgrunnstjeneste fra bakgrunnen, og CONNECTION-holderen tas nettopp når telefonen kobles til
+bilen - som godt kan skje mens appen ligger i bakgrunnen. Talte vi holderen likevel, sa
+`Tracking.isActive` «sporingen går» mens ingenting leste posisjon, og bilskjermen ville aldri
+meldt fra om at den var stoppet. `LocationForegroundService.start` svarer nå om den fikk lov.
+
+Og fordi `CarConnection` bare leverer ved ENDRING, må holderen kunne tas på nytt: ble den avvist
+mens hovedbryteren var av, eller ryddet «Avslutt» den bort, kom det ingen ny hendelse før
+telefonen fysisk ble koblet fra og til igjen. `BotometerApp.applyCarConnectionHolder()` er veien
+tilbake, og telefon-appen kaller den når bryteren slås på.
 
 **Og å telle skjermer var bare halve svaret.** Begge holderne var fortsatt skjermer, og skjermer
 slukker. Kjører du med Maps på bilskjermen uten å ha åpnet Botometer i bilen den turen, finnes
