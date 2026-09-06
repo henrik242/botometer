@@ -14,7 +14,8 @@
     <!-- Sekundærtekst og hjelpetekst. 6,1:1 - hjelpeteksten er brødtekst på 12sp og må klare
          4,5:1, ikke bare 3:1. -->
     <color name="text_secondary">#FF5F5F64</color>
-    <!-- Dempet: «--», «Av», ukjent fartsgrense, uvalgt manuell grense. 5,0:1 -->
+    <!-- Dempet: strekene der farten mangler, «Av», ukjent fartsgrense, uvalgt
+         manuell grense. 5,0:1 -->
     <color name="muted">#FF6E6E73</color>
 
     <!-- Alvorlighetsskalaen. Fargen bæres av konsekvensen, ikke av farten. -->
