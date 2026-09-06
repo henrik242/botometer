@@ -39,6 +39,10 @@ import no.synth.botometer.speed.TrackingHolders
  * Her, og bare her, kan fartsgrensen settes for hånd. Telefonen er flaten som kan betjenes med
  * bilen i ro; på bilskjermen ville en rad med knapper vært en invitasjon til å fikle under
  * kjøring, og fartsgrensen der leses uansett fra det samme [ManualLimit].
+ *
+ * Ingen «Avslutt»-knapp her. Tilbake-knappen gjør allerede jobben - [onStop] slipper sporingen -
+ * og på en skjerm som skal leses i et øyekast er en knapp til bare noe som stjeler plass fra
+ * tallene. Bilskjermen har den fortsatt: der finnes det ingen tilbake-knapp.
  */
 class PhoneSpeedometerActivity : ComponentActivity() {
 
@@ -75,7 +79,6 @@ class PhoneSpeedometerActivity : ComponentActivity() {
                     addView(manualRow)
                 }
             )
-            addView(exitButton())
         }
 
         ViewCompat.setOnApplyWindowInsetsListener(content) { view, insets ->
@@ -153,25 +156,6 @@ class PhoneSpeedometerActivity : ComponentActivity() {
             }
             button.setTextColor(if (selected) Color.WHITE else Color.rgb(130, 130, 135))
         }
-    }
-
-    /**
-     * «Avslutt» betyr slutt, ikke «gå tilbake»: posisjonssporingen stoppes og varselet forsvinner.
-     *
-     * Tilbake-knappen gjør riktignok det samme via [onStop], men det er ikke synlig noe sted, og
-     * en app som leser GPS og viser et vedvarende varsel må kunne skrus av der den vises - ikke
-     * bare forlates og håpes på.
-     */
-    private fun exitButton() = Button(this).apply {
-        text = getString(R.string.exit)
-        textSize = 14f
-        setOnClickListener { exit() }
-    }
-
-    private fun exit() {
-        // Slutt for alle, ikke bare for denne skjermen: «Avslutt» betyr slutt.
-        Tracking.stopAll()
-        finish()
     }
 
     private fun big(textSize: Float, color: Int = Color.WHITE) = TextView(this).apply {

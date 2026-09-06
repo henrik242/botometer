@@ -175,6 +175,20 @@ med hva som mangler), så bare de fikseknappene som hører til et problem du fak
 speedometeret, så innstillingene - og diagnostikken bak «Vis diagnostikk». «Kopier diagnostikk»
 tar hele rapporten uansett om den vises.
 
+**Farten står også her, men bare når sporingen alt er i gang.** Kortet under overskriften viser
+fart, fartsgrense og bot i det øyeblikket noe faktisk sporer - bilskjermen, eller
+telefonspeedometeret som ligger åpent bak. Det er det korteste svaret på «virker det?»: tall
+slår grønne haker.
+
+Skjermen tar aldri en `Tracking`-holder selv. Å åpne innstillingene skal ikke slå på GPS-en -
+da ville posisjonsvarselet dukket opp hver gang du sjekket en bryter, og appen lest posisjon uten
+at du ba om det. Kortet er en leser, aldri en årsak, og det skjules igjen i det sporingen stopper:
+uten det ville et tall som ikke lenger gjelder blitt stående.
+
+Telefonspeedometeret har til gjengjeld **ingen «Avslutt»-knapp**. Tilbake-knappen gjør allerede
+jobben, og på en skjerm som skal leses i et øyekast er en knapp til bare noe som stjeler plass fra
+tallene. Bilskjermen beholder sin: der finnes det ingen tilbake-knapp.
+
 ## Datakilder
 
 | Data | Kilde | Lisens |

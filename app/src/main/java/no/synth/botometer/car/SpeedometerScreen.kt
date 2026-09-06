@@ -140,7 +140,7 @@ class SpeedometerScreen(carContext: CarContext) : Screen(carContext), DefaultLif
                     )
                     .addAction(
                         Action.Builder()
-                            .setTitle("Avslutt")
+                            .setTitle(carContext.getString(R.string.exit))
                             .setIcon(exitIcon)
                             .setOnClickListener { exit() }
                             .build()

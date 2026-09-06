@@ -22,12 +22,20 @@ import androidx.car.app.connection.CarConnection
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import no.synth.botometer.alert.SpeedWatch
 import no.synth.botometer.alert.SpeedingAlerts
+import no.synth.botometer.fine.FineEstimate
 import no.synth.botometer.fine.FineTableRepository
 import no.synth.botometer.fine.TableStatus
+import no.synth.botometer.speed.FixFreshness
 import no.synth.botometer.speed.GpsSpeedSource
+import no.synth.botometer.speed.SpeedFeed
 
 /**
  * Telefon-delen er viktigere når appen sideloades enn når den kommer fra Play: den er både
@@ -47,6 +55,9 @@ class MainActivity : ComponentActivity() {
 
     private lateinit var headline: TextView
     private lateinit var subline: TextView
+    private lateinit var speedCard: LinearLayout
+    private lateinit var speedValue: TextView
+    private lateinit var speedDetail: TextView
     private lateinit var problems: TextView
     private lateinit var diagnostics: TextView
     private lateinit var diagnosticsToggle: Button
@@ -56,6 +67,9 @@ class MainActivity : ComponentActivity() {
 
     /** Hele rapporten, også når den er skjult: «Kopier diagnostikk» skal alltid ta med alt. */
     private var report: String = ""
+
+    /** Konstruksjonen leser satsfila fra disk, så den skal ikke skje på hovedtråden. */
+    private var watch: SpeedWatch? = null
 
     /**
      * Leses asynkront fra Android Auto. null til første svar kommer - og det skillet er verdt å
@@ -83,6 +97,20 @@ class MainActivity : ComponentActivity() {
             textSize = 14f
             setTextIsSelectable(true)
         }
+        // Live fart, når sporingen først er i gang. Skjermen skal kunne svare på «virker det?»
+        // med tall og ikke bare med grønne haker.
+        speedValue = TextView(this).apply { textSize = 34f }
+        speedDetail = TextView(this).apply {
+            textSize = 13f
+            setTextColor(Color.rgb(120, 120, 125))
+        }
+        speedCard = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = View.GONE
+            addView(speedValue)
+            addView(speedDetail)
+        }
+
         diagnostics = TextView(this).apply {
             textSize = 13f
             setTextIsSelectable(true)   // så brukeren kan lime rapporten inn i en issue
@@ -129,6 +157,7 @@ class MainActivity : ComponentActivity() {
             addView(versionLine())
             addView(headline)
             addView(subline)
+            addView(speedCard)
 
             addView(problems)
             addView(fixPermissions)
@@ -212,9 +241,74 @@ class MainActivity : ComponentActivity() {
             }
         }
 
+        observeSpeed()
         askPermissions()
         refreshIfStale()
     }
+
+    /**
+     * Viser farten, men starter den ikke.
+     *
+     * Denne skjermen tar aldri [no.synth.botometer.speed.Tracking]-holder. Å åpne
+     * innstillingene skal ikke slå på GPS-en - da ville et vedvarende posisjonsvarsel dukket opp
+     * hver gang du sjekket en bryter, og appen ville lest posisjon uten at du ba om det. Kortet
+     * leser bare det som allerede strømmer: kjører bilskjermen, eller står telefonspeedometeret
+     * åpent bak, ser du tallene her også.
+     */
+    private fun observeSpeed() {
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                val w = watch ?: withContext(Dispatchers.IO) { SpeedWatch(this@MainActivity) }
+                    .also { watch = it }
+                w.readings().collect { renderSpeed(it) }
+            }
+        }
+        // Stopper sporingen, slutter fixene å komme, og kortet ville blitt stående med et tall
+        // som ikke lenger gjelder. `null` er signalet om at tjenesten la seg ned.
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                SpeedFeed.fixes.collect { if (it == null) speedCard.visibility = View.GONE }
+            }
+        }
+    }
+
+    private fun renderSpeed(reading: SpeedWatch.Reading) {
+        val lost = reading.freshness == FixFreshness.LOST
+        val estimate = reading.estimate
+
+        speedValue.setTextColor(
+            when {
+                lost -> Color.rgb(150, 150, 150)
+                estimate is FineEstimate.NoOffence -> Color.rgb(30, 140, 70)
+                estimate is FineEstimate.UnknownLimit -> Color.rgb(150, 150, 150)
+                estimate is FineEstimate.SimplifiedFine ->
+                    if (estimate.points == 0) Color.rgb(190, 150, 20) else Color.rgb(190, 110, 20)
+                estimate is FineEstimate.Prosecution -> Color.rgb(200, 45, 45)
+                else -> Color.rgb(150, 150, 150)
+            }
+        )
+        speedValue.text = buildString {
+            append(if (lost) "--" else "${reading.speedKmt.toInt()}")
+            append(" km/t")
+            reading.limitKmt?.let { append("   ·   grense $it") }
+            if (reading.manualLimit) append(" (manuell)")
+        }
+        speedDetail.text = when {
+            lost -> "Ingen GPS - sporingen går, men signalet er borte"
+            reading.freshness == FixFreshness.STALE -> "Mistet GPS-signalet - venter"
+            estimate is FineEstimate.UnknownLimit -> "Ukjent fartsgrense her"
+            estimate is FineEstimate.NoOffence -> "Ingen bot"
+            estimate is FineEstimate.SimplifiedFine ->
+                "${nok(estimate.amountNok)} kr · ${estimate.overKmt} km/t over"
+            estimate is FineEstimate.Prosecution ->
+                "Anmeldelse · ${estimate.overKmt} km/t over"
+            else -> ""
+        }
+        speedCard.visibility = View.VISIBLE
+    }
+
+    private fun nok(amount: Int) = amount.toString()
+        .reversed().chunked(3).joinToString(" ").reversed()
 
     override fun onResume() {
         super.onResume()
