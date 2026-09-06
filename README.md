@@ -585,11 +585,21 @@ før, så tilbake-knappen der fortsatt slår av GPS-en når telefonen er den ene
 men den slår den ikke lenger av for bilen. Hovedbryteren står over hele tellingen: er den av,
 slipper `Tracking.acquire` ingen holder inn i det hele tatt.
 
-**Holderen tas bare når tjenesten faktisk startet.** Fra Android 12 er det forbudt å starte en
+**En holder er en hensikt, ikke en kvittering.** Fra Android 12 er det forbudt å starte en
 forgrunnstjeneste fra bakgrunnen, og CONNECTION-holderen tas nettopp når telefonen kobles til
-bilen - som godt kan skje mens appen ligger i bakgrunnen. Talte vi holderen likevel, sa
-`Tracking.isActive` «sporingen går» mens ingenting leste posisjon, og bilskjermen ville aldri
-meldt fra om at den var stoppet. `LocationForegroundService.start` svarer nå om den fikk lov.
+bilen - som godt kan skje mens appen ligger bak. Et forsøk på å være presis - «ikke tell en
+holder for en tjeneste som aldri startet» - kostet dyrt:
+
+1. Bilen kobler til i bakgrunnen → CONNECTION nektes → ingen holder registrert
+2. Du åpner telefon-appen → PHONE i forgrunnen → starten går → `{PHONE}`
+3. Telefonskjermen slukker → PHONE slippes, siste holder → tjenesten stoppes
+
+Fartsvarslene døde altså i det telefonskjermen gikk i svart, med bilen tilkoblet - det ene
+tilfellet CONNECTION-holderen finnes for. Holderens jobb er å NEKTE en slik stopp, ikke å starte
+tjenesten, og å binde den til en start som avslås nøyaktig når den trengs var å fjerne den igjen.
+Holderen registreres nå uansett; starten er et eget, gjentatt forsøk, og neste holder som kommer
+i forgrunnen reparerer en start som ble nektet før. `Diagnostics` skriver hvilken av delene som
+skjedde, og `TrackingKillSwitchTest` låser hele kjeden.
 
 Og fordi `CarConnection` bare leverer ved ENDRING, må holderen kunne tas på nytt: ble den avvist
 mens hovedbryteren var av, eller ryddet «Avslutt» den bort, kom det ingen ny hendelse før

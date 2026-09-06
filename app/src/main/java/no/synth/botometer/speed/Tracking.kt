@@ -76,6 +76,12 @@ object Tracking {
     private var appContext: Context? = null
 
     /**
+     * Hvordan tjenesten bes om. Bare en søm for testene - en nektet start kan ikke fremkalles
+     * i Robolectric, og regelen under er for dyr til å stå udekket.
+     */
+    internal var starter: (Context) -> Boolean = LocationForegroundService::start
+
+    /**
      * Hovedbryteren sjekkes her, i det ene punktet alle flatene går gjennom, og ikke i hver av
      * dem. Ligger sjekken hos kallerne, er «av» bare av på de stedene noen husket den - og en
      * bryter som slår av det meste er verre enn ingen bryter: da tror brukeren at appen er av
@@ -88,23 +94,33 @@ object Tracking {
             return
         }
 
-        // Start FØRST, hold etterpå. Systemet kan nekte oss å be om tjenesten - fra Android 12
-        // er en forgrunnstjeneste startet fra bakgrunnen forbudt, og CONNECTION-holderen tas
-        // nettopp når telefonen kobles til bilen, som godt kan skje mens appen ligger i
-        // bakgrunnen. Talte vi holderen likevel, ville `isActive` sagt «sporingen går» mens
-        // ingenting leste posisjon, og bilskjermen ville aldri meldt fra om at den var stoppet.
+        // HOLD FØRST, start etterpå - og hold selv om starten blir nektet.
         //
-        // Kalles alltid, ikke bare for den første holderen: blir tjenesten drept av systemet,
-        // er tellingen vår fortsatt full, og en betinget start ville aldri startet den igjen.
-        // `onStartCommand` tåler å bli kalt om igjen.
-        if (!LocationForegroundService.start(context)) {
-            Diagnostics.tracking("$holder fikk ikke startet tjenesten", holders.current)
-            return
-        }
-
+        // En holder er en HENSIKT: «denne flaten vil ha sporing». Om systemet lot oss be om
+        // tjenesten akkurat nå er et helt annet spørsmål, og fra Android 12 er svaret nei for
+        // enhver forgrunnstjeneste startet fra bakgrunnen - altså nettopp når bilen kobler seg
+        // til mens appen ligger bak. Å la den nektede starten spise holderen ga denne kjeden:
+        //
+        //   1. Bilen kobler til i bakgrunnen  → CONNECTION nektes → ingen holder registrert
+        //   2. Du åpner telefon-appen         → PHONE i forgrunnen → starten går → {PHONE}
+        //   3. Telefonskjermen slukker        → PHONE slippes, SISTE holder → tjenesten stoppes
+        //
+        // Fartsvarslene døde altså i det telefonskjermen gikk i svart, med bilen tilkoblet.
+        // CONNECTION-holderens jobb er å NEKTE en slik stopp, ikke å starte tjenesten; å binde
+        // den til en start som avslås nøyaktig når den trengs, var å fjerne den igjen.
         appContext = context.applicationContext
         holders.add(holder)
-        Diagnostics.tracking("$holder tok sporingen", holders.current)
+
+        // Kalles alltid, ikke bare for den første holderen: blir tjenesten drept av systemet,
+        // er tellingen vår fortsatt full, og en betinget start ville aldri startet den igjen.
+        // `onStartCommand` tåler å bli kalt om igjen. Neste holder som kommer i forgrunnen
+        // reparerer dermed en start som ble nektet tidligere.
+        val started = starter(context)
+        Diagnostics.tracking(
+            if (started) "$holder tok sporingen"
+            else "$holder tok sporingen, men systemet nektet oss å starte tjenesten",
+            holders.current,
+        )
     }
 
     /**

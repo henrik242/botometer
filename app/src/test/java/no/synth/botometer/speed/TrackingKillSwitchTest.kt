@@ -26,7 +26,10 @@ class TrackingKillSwitchTest {
     private val context: Application get() = ApplicationProvider.getApplicationContext()
 
     /** [Tracking] er et objekt, og statisk tilstand overlever mellom tester i samme lastere. */
-    @After fun cleanup() = Tracking.stopAll()
+    @After fun cleanup() {
+        Tracking.stopAll()
+        Tracking.starter = LocationForegroundService::start
+    }
 
     @Test
     fun `avslaatt app starter ikke posisjonssporing`() {
@@ -126,5 +129,61 @@ class TrackingKillSwitchTest {
             LocationForegroundService::class.java.name,
             shadowOf(context).nextStartedService?.component?.className,
         )
+    }
+
+    /**
+     * Den dyreste regresjonen i dette prosjektet, i tre trinn.
+     *
+     * Fra Android 12 er en forgrunnstjeneste startet fra bakgrunnen forbudt - altså nøyaktig når
+     * bilen kobler seg til mens appen ligger bak. Lot vi den nektede starten spise holderen,
+     * skjedde dette:
+     *
+     *   1. Bilen kobler til i bakgrunnen  → CONNECTION nektes → ingen holder registrert
+     *   2. Du åpner telefon-appen         → PHONE i forgrunnen → starten går → {PHONE}
+     *   3. Telefonskjermen slukker        → PHONE slippes, SISTE holder → tjenesten stoppes
+     *
+     * Fartsvarslene døde da telefonskjermen gikk i svart, med bilen tilkoblet - det ene
+     * tilfellet CONNECTION-holderen finnes for.
+     *
+     * En holder er en HENSIKT. Om systemet lot oss be om tjenesten akkurat da er et annet
+     * spørsmål, og det spørsmålet skal ikke kunne slette hensikten.
+     */
+    @Test
+    fun `en nektet start tar ikke med seg holderen`() {
+        Settings(context).enabled = true
+
+        // 1. Bilen kobler til mens appen ligger i bakgrunnen: systemet nekter starten.
+        Tracking.starter = { false }
+        Tracking.acquire(context, TrackingHolders.Holder.CONNECTION)
+        assertTrue("hensikten skal stå selv om starten ble nektet", Tracking.isActive)
+
+        // 2. Telefon-appen åpnes. Nå er vi i forgrunnen, og starten går gjennom.
+        Tracking.starter = { true }
+        Tracking.acquire(context, TrackingHolders.Holder.PHONE)
+
+        // 3. Telefonskjermen slukker.
+        Tracking.release(TrackingHolders.Holder.PHONE)
+
+        assertTrue(
+            "bilforbindelsen holder fortsatt - varslene skal ikke dø med telefonskjermen",
+            Tracking.isActive,
+        )
+        assertNull(
+            "tjenesten skal ikke ha blitt stoppet",
+            shadowOf(context).nextStoppedService,
+        )
+    }
+
+    /** Og en nektet start skal fortsatt prøves på nytt av neste holder som kommer. */
+    @Test
+    fun `neste holder prover starten paa nytt`() {
+        Settings(context).enabled = true
+        var attempts = 0
+        Tracking.starter = { attempts++; false }
+
+        Tracking.acquire(context, TrackingHolders.Holder.CONNECTION)
+        Tracking.acquire(context, TrackingHolders.Holder.PHONE)
+
+        assertEquals("hver holder skal be om tjenesten, ikke bare den første", 2, attempts)
     }
 }
