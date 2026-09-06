@@ -21,6 +21,10 @@
     <!-- «Avslutt» stopper posisjonssporingen, den skjuler ikke bare skjermen. En app som leser
          GPS må kunne skrus av der den vises. -->
     <string name="exit">Avslutt</string>
+    <!-- «Trykk to ganger for å avslutte», slik alle andre gjør det. Ett trykk kan ikke få lov:
+         avslutt stopper posisjonssporingen, og et uhell med tommelen skal ikke slå av
+         fartsvarslene midt i en kjøretur. -->
+    <string name="press_back_again">Trykk en gang til for å avslutte og stoppe sporingen</string>
     <string name="clear_crash_log">Tøm krasjloggen</string>
     <!-- Hele diagnostikkrapporten til utklippstavla. Å markere fem skjermhøyder med tekst på en
          telefon er en øvelse ingen orker å gjøre riktig. -->

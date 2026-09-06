@@ -9,6 +9,7 @@ import android.net.Uri
 import android.provider.Settings as AndroidSettings
 import android.os.Build
 import android.os.Bundle
+import android.os.SystemClock
 import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
@@ -20,6 +21,7 @@ import android.widget.Switch
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.car.app.connection.CarConnection
 import androidx.core.app.NotificationManagerCompat
@@ -98,6 +100,48 @@ class MainActivity : ComponentActivity() {
      * bilskjermen ikke viser noe.
      */
     private var carConnectionType: Int? = null
+
+    /**
+     * Tilbake-knappen trykket sist, på monoton klokke. 0 = ikke trykket i denne runden.
+     */
+    private var lastBackPressAt = 0L
+
+    /**
+     * «Trykk to ganger for å avslutte», slik alle andre gjør det.
+     *
+     * Ett trykk kan ikke avslutte her, for avslutt betyr slutt: [Tracking.stopAll] stopper
+     * posisjonssporingen og fjerner det vedvarende varselet, også bilens holdere. Et uhell med
+     * tommelen skal ikke slå av fartsvarslene midt i en kjøretur.
+     *
+     * Det første trykket gjør derfor ingenting annet enn å si fra. Vil du bare legge appen bort
+     * uten å stoppe sporingen, er det hjem-knappen - da fortsetter farten og varslene, som de
+     * skal når du bytter til Maps på telefonen.
+     */
+    private val doubleBackToExit = object : OnBackPressedCallback(true) {
+        override fun handleOnBackPressed() {
+            val now = SystemClock.elapsedRealtime()
+            if (now - lastBackPressAt < DOUBLE_BACK_WINDOW_MS) {
+                exit()
+                return
+            }
+            lastBackPressAt = now
+            Toast.makeText(this@MainActivity, R.string.press_back_again, Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    /**
+     * Slutt, ikke «skjul». Samme betydning som «Avslutt» på bilskjermen, og samme grunn: en app
+     * som leser GPS må kunne skrus av der den vises, og et vedvarende posisjonsvarsel som blir
+     * stående etter at du forlot appen er noe brukeren ikke har bedt om.
+     *
+     * Hovedbryteren røres ikke. Neste gang du åpner appen sporer den igjen - dette er slutt på
+     * denne turen, ikke en innstilling.
+     */
+    private fun exit() {
+        Tracking.stopAll()
+        doubleBackToExit.isEnabled = false
+        finish()
+    }
 
     private val requestPermissions = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -273,6 +317,8 @@ class MainActivity : ComponentActivity() {
                 render()
             }
         }
+
+        onBackPressedDispatcher.addCallback(this, doubleBackToExit)
 
         observeSpeed()
         askPermissions()
@@ -472,6 +518,9 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        // Et halvferdig dobbelttrykk skal ikke ligge og vente. Kommer du tilbake til appen
+        // senere, er neste tilbake-trykk det første igjen.
+        lastBackPressAt = 0L
         render()
     }
 
@@ -730,5 +779,10 @@ class MainActivity : ComponentActivity() {
             }
         }
         requestPermissions.launch(needed.toTypedArray())
+    }
+
+    private companion object {
+        /** Kort nok til at to trykk er én handling, langt nok til å rekke å lese varselet. */
+        const val DOUBLE_BACK_WINDOW_MS = 2_000L
     }
 }

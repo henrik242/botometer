@@ -97,6 +97,14 @@ object Tracking {
         LocationForegroundService.start(context)
     }
 
+    /**
+     * Om noe faktisk sporer nå. Bilskjermen trenger å vite det: stoppes sporingen et annet sted
+     * - «Avslutt» på telefonen - står den ellers igjen med siste frame, og et tall som ikke
+     * lenger gjelder ser ut som et tall som gjelder.
+     */
+    val isActive: Boolean
+        @Synchronized get() = holders.active
+
     @Synchronized
     fun release(holder: TrackingHolders.Holder) {
         val last = holders.remove(holder)

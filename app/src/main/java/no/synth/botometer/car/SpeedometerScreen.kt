@@ -52,6 +52,14 @@ class SpeedometerScreen(carContext: CarContext) : Screen(carContext), DefaultLif
     private var collectJob: Job? = null
     private var feedJob: Job? = null
 
+    /**
+     * Satt når fixene slutter å komme OG ingen holder på sporingen lenger - altså «Avslutt» et
+     * annet sted, typisk telefonen. Et flagg og ikke et oppslag i [Tracking] fra
+     * [onGetTemplate]: verten kan be om templaten før [onStart] har rukket å ta holderen, og da
+     * ville skjermen meldt «stoppet» i det den startet.
+     */
+    private var trackingStopped = false
+
     private val settings = Settings(carContext)
 
     /**
@@ -83,6 +91,7 @@ class SpeedometerScreen(carContext: CarContext) : Screen(carContext), DefaultLif
 
         // Holderen er CAR fordi det er ØKTA som eier sporingen, ikke denne skjermen.
         // [BotometerSession] slipper den igjen når økta dør.
+        trackingStopped = false
         Tracking.acquire(carContext, TrackingHolders.Holder.CAR)
 
         collectJob?.cancel()
@@ -90,12 +99,16 @@ class SpeedometerScreen(carContext: CarContext) : Screen(carContext), DefaultLif
             watch.readings().collect { renderer.update(it) }
         }
 
-        // Slutter fixene å komme - typisk fordi hovedbryteren ble slått av på telefonen - står
-        // speedometeret igjen med siste frame. Et tall som ikke lenger gjelder ser ut som et
-        // tall som gjelder, så vi ber om templaten på nytt og lar den si hva som skjedde.
+        // Slutter fixene å komme - hovedbryteren slått av på telefonen, eller «Avslutt» der -
+        // står speedometeret igjen med siste frame. Et tall som ikke lenger gjelder ser ut som
+        // et tall som gjelder, så vi ber om templaten på nytt og lar den si hva som skjedde.
         feedJob?.cancel()
         feedJob = lifecycleScope.launch {
-            SpeedFeed.fixes.collect { if (it == null) invalidate() }
+            SpeedFeed.fixes.collect {
+                if (it != null) return@collect
+                trackingStopped = !Tracking.isActive
+                invalidate()
+            }
         }
     }
 
@@ -123,6 +136,26 @@ class SpeedometerScreen(carContext: CarContext) : Screen(carContext), DefaultLif
             )
                 .setTitle("Avslått")
                 .setHeaderAction(Action.APP_ICON)
+                .build()
+        }
+
+        // Sporingen er stoppet et annet sted. Å stå med et frosset speedometer ville vært å
+        // vise en fart bilen ikke har - og «Start på nytt» er kortere enn å finne telefonen.
+        if (trackingStopped) {
+            return MessageTemplate.Builder(
+                "Sporingen er stoppet. Botometer ble avsluttet på telefonen."
+            )
+                .setTitle("Stoppet")
+                .setHeaderAction(Action.APP_ICON)
+                .addAction(
+                    Action.Builder()
+                        .setTitle("Start på nytt")
+                        .setOnClickListener {
+                            startTracking()
+                            invalidate()
+                        }
+                        .build()
+                )
                 .build()
         }
 

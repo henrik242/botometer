@@ -205,8 +205,17 @@ dette bare en innstillingsside igjen, og da holdes ingenting våkent og ingentin
 Kortet skiller på hvorfor det ikke er noe å vise: «Av», «Ingen posisjon» og «Venter på GPS» er tre
 forskjellige svar. «--» uten forklaring er en app som ser ødelagt ut.
 
-Telefonen har **ingen «Avslutt»-knapp**. Hovedbryteren gjør den jobben, og gjør den grundigere.
-Bilskjermen beholder sin: der finnes det ingen tilbake-knapp og ingen innstillinger.
+Telefonen har **ingen «Avslutt»-knapp**, men **trykk tilbake to ganger** for å avslutte - slik
+alle andre gjør det. Ett trykk sier bare fra; det andre innen to sekunder stopper
+posisjonssporingen og fjerner det vedvarende varselet, akkurat som «Avslutt» på bilskjermen.
+
+Ett trykk kan ikke få lov, for avslutt betyr slutt: `Tracking.stopAll()` slipper også bilens
+holdere. Et uhell med tommelen skal ikke slå av fartsvarslene midt i en kjøretur. Vil du bare
+legge appen bort uten å stoppe sporingen, er det hjem-knappen. Hovedbryteren røres ikke -
+neste gang du åpner appen sporer den igjen, for dette er slutt på denne turen, ikke en
+innstilling.
+
+Bilskjermen beholder sin knapp: der finnes det verken tilbake-knapp eller innstillinger.
 
 ## Datakilder
 
@@ -485,8 +494,10 @@ var eneste vei ut av bilskjermen å starte en annen navigasjonsapp - og da lever
 appen leser posisjon, og varselet står, uten at noe på skjermen forklarer hvorfor. En app som
 leser GPS må kunne skrus av der den vises.
 
-Telefonen har ikke en slik knapp, men hovedbryteren: tilbake-knappen slipper telefonens holder,
-og «Botometer er på» slår av alt sammen, også bil-økta.
+Telefonen gjør det samme med **to trykk på tilbake**, og hovedbryteren «Botometer er på» slår av
+alt sammen mer varig. Avsluttes det fra telefonen mens bilskjermen står på, bytter bilskjermen
+til «Stoppet» med en «Start på nytt»-knapp - et frosset speedometer ville vist en fart bilen
+ikke har.
 
 `LocationForegroundService` eier GPS-abonnementet og lever videre når Maps overtar skjermen, så
 varslene virker uansett hvem som eier bilskjermen. Varselet er `IMPORTANCE_HIGH` og utvidet med
