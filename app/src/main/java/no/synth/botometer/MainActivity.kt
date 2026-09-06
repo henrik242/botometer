@@ -298,10 +298,13 @@ class MainActivity : ComponentActivity() {
         headline.setTextColor(
             if (trouble.isEmpty()) Color.rgb(30, 140, 70) else Color.rgb(190, 110, 20)
         )
+        // Satsversjonen står her uansett, også når noe er galt: den er svaret på «hvilke tall
+        // regner appen med nå», og et automatisk oppdatert sett skal være synlig med én gang -
+        // ikke gjemt bak diagnostikken.
         subline.text = if (trouble.isEmpty()) {
             "Satser ${t.table.versjon} · fartsgrenser fra NVDB"
         } else {
-            "${trouble.size} ting å ordne"
+            "${trouble.size} ting å ordne · satser ${t.table.versjon}"
         }
 
         problems.text = trouble.joinToString("\n") { "⚠ $it" }

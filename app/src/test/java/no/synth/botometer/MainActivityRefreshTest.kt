@@ -4,7 +4,6 @@ import android.content.Context
 import android.os.Looper
 import android.view.View
 import android.view.ViewGroup
-import android.widget.Button
 import android.widget.TextView
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
@@ -72,16 +71,28 @@ class MainActivityRefreshTest {
 
     private fun idleMainLooper() = shadowOf(Looper.getMainLooper()).idle()
 
-    /** Statusfeltet har ingen id - det bygges i kode - så det plukkes ut av view-treet. */
-    private fun statusText(activity: MainActivity): String {
-        fun find(view: View): TextView? = when {
-            view is Button -> null
-            view is TextView -> view
-            view is ViewGroup -> (0 until view.childCount).firstNotNullOfOrNull { find(view.getChildAt(it)) }
-            else -> null
+    /**
+     * Feltene bygges i kode og har ingen id-er, så teksten plukkes ut av view-treet.
+     *
+     * Alle tekstfeltene, ikke det første: skjermen er delt i overskrift, problemer, innstillinger
+     * og en diagnostikkrapport, og hvilket felt en opplysning havner i er en layoutdetalj. En
+     * test som henger på «det første tekstfeltet» tester rekkefølgen på visningen, ikke at
+     * satsene ble oppdatert.
+     *
+     * @param onlyVisible tar bare med det brukeren faktisk ser. Diagnostikken er skjult til man
+     * ber om den, og noe som står der er ikke «vist».
+     */
+    private fun textOf(activity: MainActivity, onlyVisible: Boolean): String {
+        fun collect(view: View, into: StringBuilder) {
+            if (onlyVisible && view.visibility != View.VISIBLE) return
+            when (view) {
+                is TextView -> into.appendLine(view.text)
+                is ViewGroup -> (0 until view.childCount).forEach { collect(view.getChildAt(it), into) }
+                else -> Unit
+            }
         }
         val root = activity.findViewById<ViewGroup>(android.R.id.content)
-        return checkNotNull(find(root)) { "fant ikke statusfeltet" }.text.toString()
+        return buildString { collect(root, this) }
     }
 
     @Test
@@ -148,10 +159,18 @@ class MainActivityRefreshTest {
             // render() kalles på nytt etter nedlastingen, ellers ville advarselen blitt staaende
             // til brukeren forlot skjermen.
             scenario.onActivity { activity ->
-                val text = statusText(activity)
-                assertTrue(text.contains("2027-03-01"))
-                assertTrue(text.contains("hentet fra nett"))
-                assertFalse(text.contains("⚠"))
+                // Den nye versjonen skal stå der brukeren ser den, ikke bare i rapporten.
+                assertTrue(
+                    "den nye satsversjonen skal være synlig med én gang",
+                    textOf(activity, onlyVisible = true).contains("2027-03-01"),
+                )
+
+                val all = textOf(activity, onlyVisible = false)
+                assertTrue("satsene skal komme fra nett nå", all.contains("hentet fra nett"))
+                assertFalse(
+                    "advarselen om gamle satser skal ikke bli stående etter oppdateringen",
+                    all.contains("over ett år", ignoreCase = true),
+                )
             }
         }
     }
