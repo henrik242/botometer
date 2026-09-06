@@ -140,13 +140,40 @@ release-bygg uansett nøkkel — uten vertsvalidering kan en vilkårlig app på 
 `CarAppService` og lese posisjonen din, og en sideloadet APK har ingen Play-signatur som gjenstår
 som kontroll.
 
-**Telefon-appen er nå oppsett, oppdateringskanal og diagnostikk.** Uten Play Console finnes ingen
+**Tre brytere, og hva hver av dem faktisk gjør.** `Settings` ligger i SharedPreferences og
+overlever omstart - til forskjell fra `ManualLimit`, som nullstilles hver tur, fordi det ene er
+en beslutning om appen og det andre et anslag for én strekning.
+
+- **Varsler på telefonen.** Av kan ikke bety «ingenting postes»: bilverten leser varslene fra
+  telefonens varselstrøm, så et varsel i bilen forutsetter et varsel på telefonen. Av gir derfor
+  en stille kanal - ingen heads-up, bare en linje i skyggen - mens bilen får sitt som før.
+  To kanaler, fordi viktighet ikke kan endres etter at en kanal er opprettet.
+- **Varsler på bilskjermen.** Av betyr at varselet postes uten `CarAppExtender`, og uten den
+  viser verten ingenting. Det er selve mekanismen, ikke noe vi ber verten respektere. Merk at
+  `CarNotificationManager.notify` LEGGER PÅ en tom extender hvis varselet mangler en, så
+  avslåingen må gå utenom den - ellers ville bryteren ikke virke i det hele tatt.
+- **Sporing i bakgrunnen.** På: bil-økta holder på sporingen så lenge appen er åpnet i bilen, også
+  mens Maps eier skjermen - det er det som får fartsvarslene til å virke der. Av: sporingen følger
+  skjermene, og da er både fart og varsler borte når Maps overtar. Det koster funksjonen, men det
+  er et ekte valg: appen leser da ikke posisjon uten at noe av den er synlig.
+
+Er begge varselbryterne av, postes ingenting - og `Diagnostics` skriver at det var derfor. Et
+varsel som uteble fordi brukeren slo det av ser ellers helt likt ut som et varsel som ikke virket,
+og da feilsøker man en innstilling.
+
+**Telefon-appen er nå oppsett, oppdateringskanal, innstillinger og diagnostikk.** Uten Play Console finnes ingen
 crash-rapporter, så appen må rapportere seg selv. `Diagnostics` viser NVDB-kall, siste rute, siste
 treff, siste bom og kandidatene matchingen forkastet — vinneren alene sier ikke hvorfor den vant.
-`CrashLog` tar vare på siste stacktrace og viser den øverst: et krasj etterlot seg ellers
-ingenting, og «den krasjer av og til» er ikke noe å feilsøke på. Teksten er selectable, så den kan
-limes rett inn i en issue. Diagnostikken vises aldri i bilen — det er distraksjon uansett hvor
-nyttig den er.
+`CrashLog` tar vare på siste stacktrace: et krasj etterlot seg ellers ingenting, og «den krasjer
+av og til» er ikke noe å feilsøke på. Diagnostikken vises aldri i bilen — det er distraksjon
+uansett hvor nyttig den er.
+
+Skjermen var lenge én tekstblokk med sju knapper under. Alt sto der, men det viktigste - «virker
+det?» - måtte leses ut av fem skjermhøyder diagnostikk, og knapper for problemer du ikke hadde sto
+side om side med dem du trengte. Rekkefølgen er nå svaret først («Klar» eller «Trenger oppsett»,
+med hva som mangler), så bare de fikseknappene som hører til et problem du faktisk har, så
+speedometeret, så innstillingene - og diagnostikken bak «Vis diagnostikk». «Kopier diagnostikk»
+tar hele rapporten uansett om den vises.
 
 ## Datakilder
 

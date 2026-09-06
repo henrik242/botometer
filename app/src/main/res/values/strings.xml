@@ -12,6 +12,9 @@
     <!-- Egen kanal, og med vilje IMPORTANCE_HIGH: dette er det ene varselet som skal sees.
          Posisjonsvarselet er IMPORTANCE_LOW nettopp for å ikke bli sett. -->
     <string name="channel_alerts">Fartsvarsler</string>
+    <!-- Samme varsel uten heads-up på telefonen. Egen kanal fordi viktighet ikke kan endres
+         etter at en kanal er opprettet. -->
+    <string name="channel_alerts_quiet">Fartsvarsler (stille på telefonen)</string>
     <string name="open_phone_speedometer">Vis speedometer på telefonen</string>
     <string name="phone_speedometer_title">Speedometer</string>
     <!-- Manuell fartsgrense: NVDB dekker ikke private veger, ny veg eller strekninger der
@@ -27,6 +30,18 @@
     <!-- Samme varsel som en ekte overtredelse, på kommando. Ellers krever hver runde med
          feilsøking av bilvarslene at noen kjører for fort med bilen tilkoblet. -->
     <string name="send_test_alert">Send testvarsel</string>
+    <string name="show_diagnostics">Vis diagnostikk</string>
+    <string name="hide_diagnostics">Skjul diagnostikk</string>
+
+    <string name="settings_heading">INNSTILLINGER</string>
+    <string name="setting_phone_alerts">Varsler på telefonen</string>
+    <!-- «Av» kan ikke bety «ingenting postes»: bilverten leser varslene fra telefonens
+         varselstrøm, så et varsel i bilen forutsetter et varsel på telefonen. -->
+    <string name="setting_phone_alerts_help">Av: ingen heads-up på telefonen, bare en stille linje i varselskyggen. Bilvarselet kommer som før.</string>
+    <string name="setting_car_alerts">Varsler på bilskjermen</string>
+    <string name="setting_car_alerts_help">Av: varselet sendes uten bil-utvidelsen, og da viser ikke bilverten det i det hele tatt.</string>
+    <string name="setting_background">Sporing i bakgrunnen</string>
+    <string name="setting_background_help">På: Botometer leser posisjon også mens Maps eier bilskjermen — det er det som får fartsvarslene til å virke der. Av: sporingen stopper når ingen Botometer-skjerm vises.</string>
     <string name="always_allow_location">Posisjon: tillat alltid</string>
     <!-- Oppdateringskanal for bøtesatsene. Uten Play må satsene kunne hentes uavhengig av
          APK-versjonen, ellers kjører gamle installasjoner utdaterte tall i stillhet. -->

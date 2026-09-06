@@ -23,6 +23,10 @@ import no.synth.botometer.alert.SpeedingAlerts
 object CarNotificationDiagnostics {
 
     fun summary(context: Context, carConnectionType: Int?): String = buildString {
+        // Innstillingene først: en bryter brukeren har slått av er den første forklaringen å
+        // utelukke, og den eneste som ikke er en feil.
+        append(Settings(context).summary())
+
         val enabled = NotificationManagerCompat.from(context).areNotificationsEnabled()
         if (!enabled) {
             appendLine("✗ Varsler er AV for appen - ingenting vises noe sted")
@@ -38,7 +42,7 @@ object CarNotificationDiagnostics {
 
         // Hva som faktisk sendes. Er alt over grønt, er det dette som må holdes mot
         // vertens krav - og da er det greit å slippe å lese det ut av kildekoden.
-        appendLine("· Sendes som: CarAppExtender, CATEGORY_NAVIGATION, PRIORITY_HIGH")
+        appendLine("· Sendes som: CarAppExtender, PRIORITY_HIGH, ingen kategori")
         appendLine("· Er alt over ✓ og varselet likevel ikke vises i bilen, er neste sted")
         appendLine("  Android Auto-innstillingene på hodeenheten (varsler/kjøremodus), og")
         appendLine("  deretter vertsloggen - se tools/bil-diagnostikk.sh i README.")

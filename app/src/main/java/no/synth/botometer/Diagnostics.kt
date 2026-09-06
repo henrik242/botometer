@@ -26,6 +26,7 @@ object Diagnostics {
     private val alertsFailed = AtomicLong(0)
     private val lastAlert = AtomicReference<String?>(null)
     private val lastAlertError = AtomicReference<String?>(null)
+    private val lastAlertSuppressed = AtomicReference<String?>(null)
     private val carSession = AtomicReference<String?>(null)
     private val carSessionActive = java.util.concurrent.atomic.AtomicBoolean(false)
 
@@ -150,10 +151,19 @@ object Diagnostics {
         lastAlertError.set("$message ${klokke()}")
     }
 
+    /**
+     * Et varsel som ikke kom fordi brukeren slo det av ser helt likt ut som et varsel som ikke
+     * virket. Forskjellen må stå skrevet, ellers feilsøker man en innstilling.
+     */
+    fun alertSuppressed(reason: String) {
+        lastAlertSuppressed.set("$reason ${klokke()}")
+    }
+
     fun alertLines(): String = buildString {
         appendLine("· Varsler sendt: ${alertsPosted.get()} (${alertsFailed.get()} feilet)")
         appendLine("· Siste varsel: ${lastAlert.get() ?: "ingen ennå"}")
         lastAlertError.get()?.let { appendLine("✗ Siste varselfeil: $it") }
+        lastAlertSuppressed.get()?.let { appendLine("· Sist undertrykt: $it") }
     }
 
     private fun klokke(): String =

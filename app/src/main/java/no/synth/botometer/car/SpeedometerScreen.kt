@@ -19,6 +19,7 @@ import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import no.synth.botometer.R
+import no.synth.botometer.Settings
 import no.synth.botometer.alert.SpeedWatch
 import no.synth.botometer.speed.GpsSpeedSource
 import no.synth.botometer.speed.Tracking
@@ -48,6 +49,8 @@ class SpeedometerScreen(carContext: CarContext) : Screen(carContext), DefaultLif
     )
 
     private var collectJob: Job? = null
+
+    private val settings = Settings(carContext)
 
     /**
      * Bilverten vil ha et ikon i handlingsstripa; en knapp med bare tittel avvises av enkelte
@@ -87,13 +90,18 @@ class SpeedometerScreen(carContext: CarContext) : Screen(carContext), DefaultLif
     }
 
     /**
-     * Bare tegningen stopper. Posisjonssporingen gjør det IKKE: verten stopper denne skjermen i
-     * det Google Maps tar over bilskjermen, og stoppet vi sporingen her, ville fartsvarslene dødd
-     * i samme øyeblikk som de ble den eneste flaten appen har igjen.
+     * Tegningen stopper alltid. Posisjonssporingen bare hvis brukeren har slått av sporing i
+     * bakgrunnen.
+     *
+     * Verten stopper denne skjermen i det Google Maps tar over bilskjermen. Slipper vi sporingen
+     * her, dør fartsvarslene i samme øyeblikk som de blir den eneste flaten appen har igjen - så
+     * standard er å holde på den til økta dør. Den som heller vil at appen ikke leser posisjon
+     * uten at noe av den er synlig, får det valget, og betaler med varslene.
      */
     private fun stopDrawing() {
         collectJob?.cancel()
         collectJob = null
+        if (!settings.backgroundTracking) Tracking.release(TrackingHolders.Holder.CAR)
     }
 
     override fun onGetTemplate(): Template {

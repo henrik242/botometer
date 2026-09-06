@@ -13,6 +13,7 @@ import androidx.core.app.NotificationManagerCompat
 import no.synth.botometer.Diagnostics
 import no.synth.botometer.MainActivity
 import no.synth.botometer.R
+import no.synth.botometer.Settings
 import no.synth.botometer.fine.FineEstimate
 import no.synth.botometer.fine.LicenceOutcome
 
@@ -38,6 +39,7 @@ class SpeedingAlerts(
 ) {
 
     private val policy = AlertPolicy(now)
+    private val settings = Settings(context)
 
     fun onReading(reading: SpeedWatch.Reading) {
         when (val decision = policy.next(reading.estimate)) {
@@ -75,7 +77,25 @@ class SpeedingAlerts(
     }
 
     private fun notify(id: Int, title: String, text: String) {
-        createChannel()
+        val phone = settings.phoneAlerts
+        val car = settings.carAlerts
+        if (!phone && !car) {
+            // Ingenting å gjøre - men det skal STÅ at det er derfor. Et varsel som ikke kom
+            // fordi brukeren slo det av ser ellers helt likt ut som et varsel som ikke virket.
+            Diagnostics.alertSuppressed("både telefon- og bilvarsler er slått av")
+            return
+        }
+
+        // Er telefonvarslene av, postes det på en stille kanal i stedet for ikke å postes:
+        // verten leser varslene fra telefonens varselstrøm, så et varsel i bilen forutsetter et
+        // varsel på telefonen. Stille kanal = ingen heads-up der, men fortsatt et i bilen.
+        // Viktighet kan ikke endres etter at en kanal er laget, så det må være to av dem.
+        val channel = if (phone) CHANNEL_ID else CHANNEL_ID_QUIET
+        createChannel(
+            channel,
+            if (phone) NotificationManager.IMPORTANCE_HIGH else NotificationManager.IMPORTANCE_LOW,
+            if (phone) R.string.channel_alerts else R.string.channel_alerts_quiet,
+        )
 
         val open = PendingIntent.getActivity(
             context, 0,
@@ -83,7 +103,7 @@ class SpeedingAlerts(
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
 
-        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+        val notification = NotificationCompat.Builder(context, channel)
             .setSmallIcon(R.drawable.ic_stat_speed)
             .setContentTitle(title)
             .setContentText(text)
@@ -102,21 +122,27 @@ class SpeedingAlerts(
             //
             // Dette er ikke et sving-for-sving-varsel. Det skal vises nettopp når vi IKKE eier
             // skjermen, og da skal det ikke utgi seg for å være noe annet.
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setPriority(
+                if (phone) NotificationCompat.PRIORITY_HIGH else NotificationCompat.PRIORITY_LOW
+            )
             .setOnlyAlertOnce(false)
             .setAutoCancel(true)
-            // Uten CarAppExtender vises varselet bare på telefonen. Verten viser ikke vanlige
-            // varsler på bilskjermen i det hele tatt.
-            .extend(
+
+        // Uten CarAppExtender vises varselet bare på telefonen. Verten viser ikke vanlige
+        // varsler på bilskjermen i det hele tatt - så «av» her er selve mekanismen, ikke en
+        // innstilling vi ber verten om å respektere.
+        if (car) {
+            notification.extend(
                 CarAppExtender.Builder()
                     .setContentTitle(title)
                     .setContentText(text)
                     .setSmallIcon(R.drawable.ic_stat_speed)
-                    // Bilskjermens egen viktighet, uavhengig av kanalen på telefonen. Uten den
-                    // arves kanalens, og da er det én ting til som kan være årsaken uten å si fra.
+                    // Bilskjermens egen viktighet, uavhengig av kanalen på telefonen. Det er den
+                    // som gjør at en stille telefonkanal fortsatt gir heads-up i bilen.
                     .setImportance(NotificationManagerCompat.IMPORTANCE_HIGH)
                     .build()
             )
+        }
 
         // CarNotificationManager, ikke NotificationManagerCompat. Dokumentasjonen til
         // CarAppExtender sier det rett ut: «Post the notification with the
@@ -131,7 +157,14 @@ class SpeedingAlerts(
         // ikke forsvinne heller: et varsel som ble kastet i stillhet ser ut som et varsel som
         // ble sendt, og da leter du etter feilen alle andre steder enn der den er.
         runCatching {
-            CarNotificationManager.from(context).notify(id, notification)
+            // CarNotificationManager legger PÅ en tom CarAppExtender hvis varselet ikke har en
+            // («updateForCar»). Skal bilvarselet være av, må vi derfor gå utenom den - ellers
+            // ville avslåingen ikke virke i det hele tatt.
+            if (car) {
+                CarNotificationManager.from(context).notify(id, notification)
+            } else {
+                NotificationManagerCompat.from(context).notify(id, notification.build())
+            }
         }.onSuccess {
             Diagnostics.alertPosted(title, text, Diagnostics.carSessionIsActive)
         }.onFailure {
@@ -139,16 +172,12 @@ class SpeedingAlerts(
         }
     }
 
-    private fun createChannel() {
+    private fun createChannel(id: String, importance: Int, nameRes: Int) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
-        // IMPORTANCE_HIGH er det som gjør varselet til en heads-up, både på telefonen og i bilen.
-        // Det er en bevisst forskjell fra posisjonsvarselet, som er IMPORTANCE_LOW nettopp for å
-        // ikke bli sett.
-        val channel = NotificationChannel(
-            CHANNEL_ID,
-            context.getString(R.string.channel_alerts),
-            NotificationManager.IMPORTANCE_HIGH,
-        )
+        // IMPORTANCE_HIGH er det som gjør varselet til en heads-up på telefonen. Det er en
+        // bevisst forskjell fra posisjonsvarselet, som er IMPORTANCE_LOW nettopp for å ikke bli
+        // sett.
+        val channel = NotificationChannel(id, context.getString(nameRes), importance)
         context.getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
     }
 
@@ -172,6 +201,9 @@ class SpeedingAlerts(
          * heves, så det vi ba om er ikke nødvendigvis det vi fikk.
          */
         const val CHANNEL_ID = "speeding"
+
+        /** Samme varsel, uten heads-up på telefonen. Viktighet kan ikke endres etter opprettelse. */
+        const val CHANNEL_ID_QUIET = "speeding_stille"
         private const val NOTIFICATION_ID = 2
     }
 }
