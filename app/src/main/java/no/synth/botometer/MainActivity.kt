@@ -95,9 +95,6 @@ class MainActivity : ComponentActivity() {
     /** Hele rapporten, også når den er skjult: «Kopier diagnostikk» skal alltid ta med alt. */
     private var report: String = ""
 
-    /** Konstruksjonen leser satsfila fra disk, så den skal ikke skje på hovedtråden. */
-    private var watch: SpeedWatch? = null
-
     /**
      * Siste avlesning, så [render] kan tegne kortet på nytt uten å vente på neste fix. Uten den
      * ble hovedbryteren stående og vise fart i et sekund etter at den var slått av.
@@ -347,16 +344,17 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
-     * Kortet leser [SpeedWatch] - det samme regnestykket bilskjermen og fartsvarslene bruker.
-     * Selve sporingen slås på i [onStart] og av i [onStop], så skjermen både viser farten og er
-     * grunnen til at den finnes, så lenge den er framme.
+     * Kortet leser den DELTE strømmen - samme regnestykke, samme eksemplar, som bilskjermen og
+     * fartsvarslene. Selve sporingen slås på i [onStart] og av i [onStop], så skjermen både
+     * viser farten og er grunnen til at den finnes, så lenge den er framme.
+     *
+     * Regnestykket kjørte før i `lifecycleScope`, altså på hovedtråden, og kart-matchet hvert
+     * fix på nytt for denne skjermen alene. Nå kommer avlesningen ferdig regnet.
      */
     private fun observeSpeed() {
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
-                val w = watch ?: withContext(Dispatchers.IO) { SpeedWatch(this@MainActivity) }
-                    .also { watch = it }
-                w.readings().collect {
+                app.readings.collect {
                     lastReading = it
                     renderSpeed(it)
                 }
@@ -770,7 +768,12 @@ class MainActivity : ComponentActivity() {
             val result = tables.refresh()
             button.isEnabled = true
             result.fold(
-                onSuccess = { Toast.makeText(this@MainActivity, "Satser: versjon ${it.table.versjon}", Toast.LENGTH_LONG).show() },
+                onSuccess = {
+                    // Uten dette regner de tre flatene videre på den gamle tabellen til
+                    // prosessen starter på nytt - og fartsvarslene gjorde det ut hele turen.
+                    withContext(Dispatchers.IO) { app.speedWatch.reloadRates() }
+                    Toast.makeText(this@MainActivity, "Satser: versjon ${it.table.versjon}", Toast.LENGTH_LONG).show()
+                },
                 onFailure = { Toast.makeText(this@MainActivity, "Kunne ikke hente satser: ${it.message}", Toast.LENGTH_LONG).show() },
             )
             render()
@@ -792,7 +795,9 @@ class MainActivity : ComponentActivity() {
         if (!settings.enabled) return
         if (!tables.load().stale) return
         lifecycleScope.launch {
-            tables.refresh()
+            if (tables.refresh().isSuccess) {
+                withContext(Dispatchers.IO) { app.speedWatch.reloadRates() }
+            }
             render()
         }
     }

@@ -19,10 +19,10 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import no.synth.botometer.BotometerApp
 import no.synth.botometer.Diagnostics
 import no.synth.botometer.R
 import no.synth.botometer.Settings
-import no.synth.botometer.alert.SpeedWatch
 import no.synth.botometer.speed.GpsSpeedSource
 import no.synth.botometer.speed.SpeedFeed
 import no.synth.botometer.speed.Tracking
@@ -40,16 +40,17 @@ import no.synth.botometer.speed.TrackingHolders
 class SpeedometerScreen(carContext: CarContext) : Screen(carContext), DefaultLifecycleObserver {
 
     // Samme regnestykke som telefonskjermen og fartsvarslene bruker: fart inn, bot ut, med
-    // GPS-friskhet, manuell fartsgrense og hysterese på ett sted. Tre kopier ville betydd at
-    // appen kunne varsle om en bot den ikke viser.
+    // GPS-friskhet, manuell fartsgrense og hysterese på ett sted - og nå faktisk SAMME
+    // eksemplar, ikke bare samme klasse. Tre kopier betydde at appen kunne varsle om en bot den
+    // ikke viste.
     //
-    // Leser satsene fra disk-cachen om den finnes, ellers asseten. Ingen nettverk i bilen -
-    // satsene oppdateres fra telefon-appen.
-    private val watch = SpeedWatch(carContext)
+    // Satsene leses fra disk-cachen om den finnes, ellers asseten. Ingen nettverk i bilen -
+    // satsene oppdateres fra telefon-appen, og slår gjennom her uten omstart.
+    private val app = carContext.applicationContext as BotometerApp
 
     private val renderer = SpeedometerRenderer(
-        watch.calculator,
-        ratesStale = watch.ratesStale,
+        calculator = { app.speedWatch.calculator },
+        ratesStale = { app.speedWatch.ratesStale },
         darkMode = { carContext.isDarkMode },
     )
 
@@ -112,7 +113,7 @@ class SpeedometerScreen(carContext: CarContext) : Screen(carContext), DefaultLif
 
         collectJob?.cancel()
         collectJob = lifecycleScope.launch {
-            watch.readings().collect { renderer.update(it) }
+            app.readings.collect { renderer.update(it) }
         }
 
         // Slutter fixene å komme - hovedbryteren slått av på telefonen, eller «Avslutt» der -
@@ -206,8 +207,8 @@ class SpeedometerScreen(carContext: CarContext) : Screen(carContext), DefaultLif
                                 CarToast.makeText(
                                     carContext,
                                     buildString {
-                                        append("Satser pr. ${watch.calculator.version}")
-                                        if (watch.ratesStale) append(" (UTDATERT - oppdater i telefon-appen)")
+                                        append("Satser pr. ${app.speedWatch.calculator.version}")
+                                        if (app.speedWatch.ratesStale) append(" (UTDATERT - oppdater i telefon-appen)")
                                         append(". Anslag - ikke juridisk bindende. Fartsgrenser: Statens vegvesen (NLOD 2.0).")
                                     },
                                     CarToast.LENGTH_LONG,

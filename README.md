@@ -288,6 +288,27 @@ utregning av det samme. Da kan appen varsle om en bot den ikke viser, og en rege
 ett sted - GPS-friskhet, manuell fartsgrense, hysterese - gjelder bare den ene flaten. Nå går
 fart, fartsgrense og bot gjennom én `Reading`, og flatene tegner den.
 
+**Og det holdt ikke å dele klassen - de måtte dele EKSEMPLARET.** Lenge gjorde de ikke det:
+`MainActivity`, `SpeedometerScreen` og `LocationForegroundService` konstruerte hver sitt
+`SpeedWatch`, og med det hver sin `FineHysteresis`, sin egen `lastMatch` og sitt eget
+øyeblikksbilde av satsfila. Tre kopier av «ett regnestykke» driver fra hverandre, og gjorde det:
+
+- **«Oppdater satser» nådde aldri fartsvarslene.** Tjenesten lager sitt eksemplar én gang
+  (`if (alertJob == null)`) og beholdt tabellen slik den var da turen begynte. Appen kunne varsle
+  om et beløp den ikke viste noe sted - nøyaktig det denne delingen finnes for å hindre.
+- **Tre hystereser i utakt.** Hver med sitt eget 1,5-sekunders holdevindu og sin egen puls, startet
+  når nettopp den flaten begynte å samle inn. Under en nedbremsing kunne varselet og de to
+  skjermene vise hvert sitt beløp samtidig.
+- **Samme posisjon kart-matchet seks ganger i sekundet.** Fix og puls, ganger tre flater, mot de
+  samme rutene - og `Diagnostics.matched` viste hvilken flate som skrev sist, ikke «treffet».
+  Telefonens andel av det gikk dessuten på hovedtråden, siden den samlet inn i `lifecycleScope`.
+
+`BotometerApp` eier nå eksemplaret, og strømmen deles med `shareIn(WhileSubscribed, replay = 1)`
+på `Dispatchers.Default`. Innsamlerne tegner fortsatt på sin egen tråd; det er regnestykket som
+har flyttet av veien. `SpeedWatch.reloadRates()` er veien inn for nye satser, og
+`SharedSpeedWatchTest` låser at den virker - en fil alene er ikke nok, det er kallet som er
+koblingen.
+
 **Hvorfor tile-cache og ikke ett kall per posisjon:** NVDB-kall tar hundrevis av millisekunder, og
 mobildekning i norske dalfører og tunneler er upålitelig. Repoet laster ~2×2 km ruter, cacher dem i
 minnet, og forhåndslaster ruta ~60 sekunder foran bilen ut fra kurs og fart. Faller nettet ut,
@@ -626,8 +647,9 @@ fortsatt ligger 17 over er det ikke. `FineHysteresis` demper vippingen på selve
 
 De tre flatene deler ett `SpeedLimitRepository`, opprettet i `BotometerApp`. Rute-cachen ligger i
 instansen, så tre repoer ville betydd tre cacher og tre ganger så mange kall mot NVDB for de
-samme rutene. Selve regnestykket deles av ett `SpeedWatch` per flate - hver med sin egen
-satstabell, så «Oppdater satser» slår gjennom uten omstart av prosessen.
+samme rutene. Selve regnestykket deles på samme måte: ett `SpeedWatch`, eid av
+`BotometerApp`, med `readings` som en delt strøm. «Oppdater satser» kaller `reloadRates()` på
+det ene eksemplaret og slår dermed gjennom på alle tre flatene uten omstart av prosessen.
 
 ## Personvern
 

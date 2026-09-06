@@ -14,6 +14,7 @@ import no.synth.botometer.fine.FineCalculator
 import no.synth.botometer.fine.FineEstimate
 import no.synth.botometer.fine.FineHysteresis
 import no.synth.botometer.fine.FineTableRepository
+import no.synth.botometer.fine.TableStatus
 import no.synth.botometer.limit.LimitMatch
 import no.synth.botometer.limit.ManualLimit
 import no.synth.botometer.speed.FixFreshness
@@ -21,12 +22,25 @@ import no.synth.botometer.speed.SpeedFeed
 import no.synth.botometer.speed.SpeedFix
 
 /**
- * Fart inn, bot ut. Ett regnestykke, delt av alle tre flatene: bilskjermen, telefonskjermen ved
- * siden av Maps, og fartsvarslene. Var det tre kopier, ville appen kunne varsle om en bot den
- * ikke viser.
+ * Fart inn, bot ut. Ett regnestykke, delt av alle tre flatene: bilskjermen, telefonskjermen og
+ * fartsvarslene.
  *
- * Fartsgrensene kommer fra det delte repoet, så de tre flatene deler rute-cache i stedet for å
- * hente de samme rutene hver for seg.
+ * Klassen har alltid sagt dette. Den var det ikke: hver flate laget sitt eget eksemplar, og med
+ * det sin egen [FineHysteresis], sin egen `lastMatch` og sitt eget øyeblikksbilde av satsfila.
+ * Tre kopier av «ett regnestykke» kan drive fra hverandre - og de gjorde det:
+ *
+ * - «Oppdater satser» nådde aldri fartsvarslene. Tjenesten lagde sitt eksemplar én gang og
+ *   beholdt den gamle tabellen ut turen, så appen kunne varsle om et beløp den ikke viste.
+ * - Hysteresen hadde tre uavhengige holdevinduer og tre pulser i utakt, så varselet og de to
+ *   skjermene kunne vise hvert sitt beløp i opptil et vindu under en nedbremsing.
+ * - Hver avlesning kart-matchet posisjonen på nytt. Med puls og fix ble den samme posisjonen
+ *   matchet seks ganger i sekundet, og `Diagnostics` viste hvilken flate som skrev sist -
+ *   ikke «treffet».
+ *
+ * Derfor eier [no.synth.botometer.BotometerApp] nå ett eksemplar, og flatene deler strømmen.
+ *
+ * Fartsgrensene kommer fra det delte repoet, så flatene deler rute-cache i stedet for å hente
+ * de samme rutene hver for seg.
  */
 class SpeedWatch(
     context: Context,
@@ -35,13 +49,30 @@ class SpeedWatch(
 
     private val app = context.applicationContext as BotometerApp
 
-    // Lastes her, ikke delt: da slår «Oppdater satser» gjennom uten omstart av prosessen.
-    private val tableStatus = FineTableRepository(
-        app, app.getString(R.string.satser_url)
-    ).load()
+    private val rates = FineTableRepository(app, app.getString(R.string.satser_url))
 
-    val calculator = FineCalculator(tableStatus.table)
+    /**
+     * Satsene kan byttes ut mens appen kjører, så de er ikke `val`.
+     *
+     * De ble lastet én gang per eksemplar, med kommentaren at det var slik «Oppdater satser»
+     * slo gjennom uten omstart. Det var sant bare for den flaten som tilfeldigvis lagde et nytt
+     * eksemplar etterpå - og fartsvarslenes eksemplar, som lages én gang per tjeneste, gjorde
+     * aldri det. Nå er det ett eksemplar, og [reloadRates] er veien inn i det.
+     */
+    @Volatile
+    private var tableStatus: TableStatus = rates.load()
+
+    @Volatile
+    var calculator: FineCalculator = FineCalculator(tableStatus.table)
+        private set
+
     val ratesStale: Boolean get() = tableStatus.stale
+
+    /** Kalles etter «Oppdater satser». Leser fra disk, så ikke fra hovedtråden. */
+    fun reloadRates() {
+        tableStatus = rates.load()
+        calculator = FineCalculator(tableStatus.table)
+    }
 
     private val hysteresis = FineHysteresis()
     private var lastMatch: LimitMatch? = null

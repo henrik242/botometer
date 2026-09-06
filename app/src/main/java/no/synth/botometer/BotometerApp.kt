@@ -3,7 +3,12 @@ package no.synth.botometer
 import android.app.Application
 import androidx.car.app.connection.CarConnection
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.shareIn
+import no.synth.botometer.alert.SpeedWatch
 import no.synth.botometer.fine.FineTableRepository
 import no.synth.botometer.limit.NvdbClient
 import no.synth.botometer.limit.SpeedLimitRepository
@@ -103,6 +108,39 @@ open class BotometerApp : Application() {
         SpeedLimitRepository(
             nvdb = NvdbClient(clientName = getString(R.string.nvdb_client_id)),
             scope = CoroutineScope(SupervisorJob()),
+        )
+    }
+
+    /**
+     * ETT regnestykke, ikke tre.
+     *
+     * [SpeedWatch] har alltid sagt at flatene deler det. De gjorde det ikke: bilskjermen,
+     * telefonskjermen og fartsvarslene lagde hvert sitt eksemplar, med hver sin hysterese, hver
+     * sin `lastMatch` og hvert sitt øyeblikksbilde av satsfila. Se KDoc-en der for hva det
+     * kostet - kort sagt at «Oppdater satser» aldri nådde varslene, og at de tre kunne vise
+     * hvert sitt beløp samtidig.
+     */
+    val speedWatch: SpeedWatch by lazy { SpeedWatch(this) }
+
+    /**
+     * Avlesningene, delt av alle flatene.
+     *
+     * `shareIn` og ikke tre innsamlinger av `readings()`: hver av dem kart-matchet posisjonen
+     * på nytt, så den samme posisjonen ble matchet opptil seks ganger i sekundet mot de samme
+     * rutene. Nå regnes den én gang og deles.
+     *
+     * `Dispatchers.Default`: matchingen gikk før på hovedtråden for telefonskjermen, som samlet
+     * inn i `lifecycleScope`. Innsamlerne tegner fortsatt på sin egen tråd - det er bare
+     * regnestykket som har flyttet av veien.
+     *
+     * `WhileSubscribed` stopper pulsen når ingen ser på, og `replay = 1` gir en ny skjerm siste
+     * avlesning med én gang i stedet for et sekunds tomhet.
+     */
+    val readings: SharedFlow<SpeedWatch.Reading> by lazy {
+        speedWatch.readings().shareIn(
+            CoroutineScope(SupervisorJob() + Dispatchers.Default),
+            started = SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000),
+            replay = 1,
         )
     }
 }

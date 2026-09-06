@@ -24,8 +24,13 @@ import no.synth.botometer.speed.FixFreshness
  * systemets UI (klokke, navigasjonsknapper), så vi sentrerer innholdet i det synlige feltet.
  */
 class SpeedometerRenderer(
-    private val calculator: FineCalculator,
-    private val ratesStale: Boolean = false,
+    /**
+     * Lambdaer og ikke verdier: satsene kan byttes ut mens skjermen står, og en `val` tatt ved
+     * konstruksjon ville frosset både beløpene og «UTDATERT»-merket til bil-økta ble laget på
+     * nytt.
+     */
+    private val calculator: () -> FineCalculator,
+    private val ratesStale: () -> Boolean = { false },
     /**
      * Bilens dag/natt-modus, lest fra verten ved hver tegning. En lambda og ikke en `CarContext`:
      * resten av denne klassen er Canvas og Paint, og det eneste den trengte bilkonteksten til
@@ -239,7 +244,7 @@ class SpeedometerRenderer(
             is FineEstimate.UnknownLimit ->
                 if (r.match == null) "Ingen NVDB-data her" else "Fartsgrense mangler i NVDB"
             is FineEstimate.NoOffence -> {
-                val margin = calculator.kmtToNextBand(r.speedKmt, r.limitKmt)
+                val margin = calculator().kmtToNextBand(r.speedKmt, r.limitKmt)
                 if (margin != null && margin <= 10) "$margin km/t til første bot" else "Innenfor"
             }
             is FineEstimate.SimplifiedFine, is FineEstimate.Prosecution ->
@@ -257,7 +262,7 @@ class SpeedometerRenderer(
         }
         // Utdaterte satser markeres på bilskjermen også. Et beløp som ser sikkert ut men bygger
         // på tre år gamle satser er verre enn ingen beløp.
-        val rates = "satser ${calculator.version}" + if (ratesStale) " ⚠" else ""
+        val rates = "satser ${calculator().version}" + if (ratesStale()) " ⚠" else ""
         return listOfNotNull(ref, rates).joinToString(" · ") + source
     }
 

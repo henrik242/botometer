@@ -19,11 +19,11 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
+import no.synth.botometer.BotometerApp
 import no.synth.botometer.Diagnostics
 import no.synth.botometer.MainActivity
 import no.synth.botometer.R
 import no.synth.botometer.Settings
-import no.synth.botometer.alert.SpeedWatch
 import no.synth.botometer.alert.SpeedingAlerts
 import no.synth.botometer.limit.ManualLimit
 
@@ -105,10 +105,15 @@ class LocationForegroundService : Service() {
 
         // Varslene hører hjemme her, ikke på bilskjermen: servicen lever videre når Maps
         // overtar skjermen, og det er nettopp da et varsel er den eneste veien fram.
+        //
+        // Den DELTE strømmen, ikke et eget SpeedWatch. Tjenesten lagde sitt eksemplar én gang
+        // og beholdt satstabellen slik den var da - så «Oppdater satser» nådde aldri hit, og
+        // appen kunne varsle om et beløp den ikke viste noe sted.
         if (alertJob == null) {
             val alerts = SpeedingAlerts(applicationContext)
+            val app = applicationContext as BotometerApp
             alertJob = scope.launch {
-                SpeedWatch(this@LocationForegroundService).readings()
+                app.readings
                     .catch { Log.w(TAG, "Fartsvarslene stoppet: ${it.message}") }
                     .collect { alerts.onReading(it) }
             }
