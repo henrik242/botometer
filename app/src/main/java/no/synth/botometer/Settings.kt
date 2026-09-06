@@ -38,25 +38,27 @@ class Settings(context: Context) {
         set(value) = prefs.edit().putBoolean(KEY_CAR_ALERTS, value).apply()
 
     /**
-     * Om posisjonssporingen skal fortsette når ingen Botometer-skjerm vises.
+     * Hovedbryteren. Av betyr av: ingen posisjonssporing, ingen foreground-tjeneste, ingen
+     * speedometer noe sted, ingen fartsvarsler og ingen oppslag mot NVDB.
      *
-     * På: bil-økta holder på sporingen så lenge appen er åpnet i bilen, også mens Google Maps
-     * eier skjermen. Det er nettopp det som får fartsvarslene til å virke der - uten det stopper
-     * GPS-en i det verten stopper skjermen vår.
+     * Dette het en gang «sporing i bakgrunnen» og betydde bare om bil-økta fikk holde på GPS-en
+     * mens Maps eide bilskjermen. Det var et valg mellom to grader av på, og en bryter som lar
+     * appen lese posisjon uansett stilling er ikke en av-bryter. En app som leser GPS må kunne
+     * skrus helt av, ett sted, uten at brukeren må gjette hvilke deler som fortsatt går.
      *
-     * Av: sporingen følger skjermene. Ingen fart og ingen varsler når Maps overtar. Det koster
-     * funksjonen, men det er et ekte valg: appen leser da ikke posisjon uten at noe av den er
-     * synlig.
+     * Derfor også en NY nøkkel og ikke den gamle: den som slo av «sporing i bakgrunnen» ba ikke
+     * om at hele appen skulle bli mørk, og skal ikke oppdage det etter en oppdatering.
      */
-    var backgroundTracking: Boolean
-        get() = prefs.getBoolean(KEY_BACKGROUND, true)
-        set(value) = prefs.edit().putBoolean(KEY_BACKGROUND, value).apply()
+    var enabled: Boolean
+        get() = prefs.getBoolean(KEY_ENABLED, true)
+        set(value) = prefs.edit().putBoolean(KEY_ENABLED, value).apply()
 
     /** Til diagnostikkrapporten. En avslått bryter er den første forklaringen å utelukke. */
     fun summary(): String = buildString {
+        // Hovedbryteren først: er den av, forklarer den alt annet i rapporten.
+        appendLine("· Botometer: " + on(enabled))
         appendLine("· Varsler på telefonen: " + on(phoneAlerts))
         appendLine("· Varsler i bilen: " + on(carAlerts))
-        appendLine("· Sporing i bakgrunnen: " + on(backgroundTracking))
     }
 
     private fun on(value: Boolean) = if (value) "på" else "AV"
@@ -65,6 +67,6 @@ class Settings(context: Context) {
         const val NAME = "botometer"
         const val KEY_PHONE_ALERTS = "phoneAlerts"
         const val KEY_CAR_ALERTS = "carAlerts"
-        const val KEY_BACKGROUND = "backgroundTracking"
+        const val KEY_ENABLED = "enabled"
     }
 }

@@ -15,8 +15,6 @@
     <!-- Samme varsel uten heads-up på telefonen. Egen kanal fordi viktighet ikke kan endres
          etter at en kanal er opprettet. -->
     <string name="channel_alerts_quiet">Fartsvarsler (stille på telefonen)</string>
-    <string name="open_phone_speedometer">Vis speedometer på telefonen</string>
-    <string name="phone_speedometer_title">Speedometer</string>
     <!-- Manuell fartsgrense: NVDB dekker ikke private veger, ny veg eller strekninger der
          fartsgrenseobjektet mangler, og der sluttet appen å regne i det hele tatt. -->
     <string name="manual_limit_auto">Auto</string>
@@ -40,8 +38,11 @@
     <string name="setting_phone_alerts_help">Av: ingen heads-up på telefonen, bare en stille linje i varselskyggen. Bilvarselet kommer som før.</string>
     <string name="setting_car_alerts">Varsler på bilskjermen</string>
     <string name="setting_car_alerts_help">Av: varselet sendes uten bil-utvidelsen, og da viser ikke bilverten det i det hele tatt.</string>
-    <string name="setting_background">Sporing i bakgrunnen</string>
-    <string name="setting_background_help">På: Botometer leser posisjon også mens Maps eier bilskjermen — det er det som får fartsvarslene til å virke der. Av: sporingen stopper når ingen Botometer-skjerm vises.</string>
+    <!-- Hovedbryteren. Den het en gang «sporing i bakgrunnen» og betydde bare om bil-økta fikk
+         holde på GPS-en mens Maps eide bilskjermen — altså et valg mellom to grader av på. En
+         bryter som lar appen lese posisjon uansett stilling er ikke en av-bryter. -->
+    <string name="setting_enabled">Botometer er på</string>
+    <string name="setting_enabled_help">Av: alt stopper — posisjonssporingen, speedometeret her og i bilen, fartsvarslene og oppslagene mot NVDB. Appen leser ingenting og bruker ingen data før du slår den på igjen.</string>
     <string name="always_allow_location">Posisjon: tillat alltid</string>
     <!-- Oppdateringskanal for bøtesatsene. Uten Play må satsene kunne hentes uavhengig av
          APK-versjonen, ellers kjører gamle installasjoner utdaterte tall i stillhet. -->

@@ -152,10 +152,26 @@ en beslutning om appen og det andre et anslag for én strekning.
   viser verten ingenting. Det er selve mekanismen, ikke noe vi ber verten respektere. Merk at
   `CarNotificationManager.notify` LEGGER PÅ en tom extender hvis varselet mangler en, så
   avslåingen må gå utenom den - ellers ville bryteren ikke virke i det hele tatt.
-- **Sporing i bakgrunnen.** På: bil-økta holder på sporingen så lenge appen er åpnet i bilen, også
-  mens Maps eier skjermen - det er det som får fartsvarslene til å virke der. Av: sporingen følger
-  skjermene, og da er både fart og varsler borte når Maps overtar. Det koster funksjonen, men det
-  er et ekte valg: appen leser da ikke posisjon uten at noe av den er synlig.
+- **Botometer er på.** Hovedbryteren. Av betyr av: ingen posisjonssporing, ingen
+  foreground-tjeneste, ingen speedometer noe sted, ingen fartsvarsler og ingen oppslag mot NVDB.
+  Bilskjermen sier «Avslått» i stedet for å stå med et tomt speedometer.
+
+  Den het en gang «sporing i bakgrunnen» og betydde bare om bil-økta fikk holde på GPS-en mens
+  Maps eide bilskjermen - altså et valg mellom to grader av *på*. En bryter som lar appen lese
+  posisjon uansett stilling er ikke en av-bryter. En app som leser GPS må kunne skrus helt av,
+  ett sted, uten at brukeren må gjette hvilke deler som fortsatt går.
+
+  Sjekken ligger i `Tracking.acquire`, det ene punktet alle flatene går gjennom for å starte
+  sporing, og en gang til i `LocationForegroundService.onStartCommand` - det som leser posisjon
+  skal sjekke selv, ikke stole på at noen andre gjorde det. Lå sjekken hos kallerne, ville «av»
+  bare vært av de stedene noen husket den. `TrackingKillSwitchTest` låser begge.
+
+  Bryteren fikk også en NY nøkkel i SharedPreferences, ikke den gamle: den som slo av «sporing i
+  bakgrunnen» ba ikke om at hele appen skulle bli mørk, og skal ikke oppdage det etter en
+  oppdatering.
+
+  «Oppdater satser» virker fortsatt når appen er av - det er noe brukeren ber om der og da. Det
+  automatiske satsoppslaget ved oppstart gjør ikke det.
 
 Er begge varselbryterne av, postes ingenting - og `Diagnostics` skriver at det var derfor. Et
 varsel som uteble fordi brukeren slo det av ser ellers helt likt ut som et varsel som ikke virket,
@@ -175,19 +191,22 @@ med hva som mangler), så bare de fikseknappene som hører til et problem du fak
 speedometeret, så innstillingene - og diagnostikken bak «Vis diagnostikk». «Kopier diagnostikk»
 tar hele rapporten uansett om den vises.
 
-**Farten står også her, men bare når sporingen alt er i gang.** Kortet under overskriften viser
-fart, fartsgrense og bot i det øyeblikket noe faktisk sporer - bilskjermen, eller
-telefonspeedometeret som ligger åpent bak. Det er det korteste svaret på «virker det?»: tall
-slår grønne haker.
+**Speedometeret ligger på den samme skjermen.** Det lå lenge i en egen aktivitet med en knapp for
+å komme dit, og det var en skjerm for mye: den viste de samme tallene fra det samme `SpeedWatch`,
+og det du kommer til appen for skal ikke ligge bak en knapp. Nå står fart, bøtebeløp og
+fartsgrense rett under overskriften, i stor skrift, med knapperaden for manuell fartsgrense under.
+Det er også det korteste svaret på «virker det?»: tall slår grønne haker.
 
-Skjermen tar aldri en `Tracking`-holder selv. Å åpne innstillingene skal ikke slå på GPS-en -
-da ville posisjonsvarselet dukket opp hver gang du sjekket en bryter, og appen lest posisjon uten
-at du ba om det. Kortet er en leser, aldri en årsak, og det skjules igjen i det sporingen stopper:
-uten det ville et tall som ikke lenger gjelder blitt stående.
+Skjermen tar en `Tracking`-holder mens den er synlig, og slipper den i `onStop`. Den både viser
+farten og er grunnen til at den finnes, så lenge den er framme - og skjermen holdes våken imens,
+siden telefonen i holderen er den flaten som står ved siden av Maps. Er hovedbryteren av, er
+dette bare en innstillingsside igjen, og da holdes ingenting våkent og ingenting spores.
 
-Telefonspeedometeret har til gjengjeld **ingen «Avslutt»-knapp**. Tilbake-knappen gjør allerede
-jobben, og på en skjerm som skal leses i et øyekast er en knapp til bare noe som stjeler plass fra
-tallene. Bilskjermen beholder sin: der finnes det ingen tilbake-knapp.
+Kortet skiller på hvorfor det ikke er noe å vise: «Av», «Ingen posisjon» og «Venter på GPS» er tre
+forskjellige svar. «--» uten forklaring er en app som ser ødelagt ut.
+
+Telefonen har **ingen «Avslutt»-knapp**. Hovedbryteren gjør den jobben, og gjør den grundigere.
+Bilskjermen beholder sin: der finnes det ingen tilbake-knapp og ingen innstillinger.
 
 ## Datakilder
 
@@ -230,7 +249,7 @@ LocationForegroundService ─→ GpsSpeedSource ─→ SpeedFeed (StateFlow) ─
                                                                       ↓
                                                                   SpeedWatch ─→ Reading
 SpeedLimitRepository ──LimitMatch─────────────────────────────────────┘   │      ├─→ SpeedometerRenderer (bilskjerm)
-    ├── NvdbClient (OkHttp, paginert, typede feil)                        │      ├─→ PhoneSpeedometerActivity
+    ├── NvdbClient (OkHttp, paginert, typede feil)                        │      ├─→ MainActivity (telefon)
     ├── LruCache<Tile, List<Segment>>        (fartsgrenser)               │      └─→ SpeedingAlerts
     ├── LruCache<Tile, List<Motorveg>>       (bare i 90-soner)            │
     └── HashMap<Tile+lag, Failure>           (negativ cache + backoff)    └─→ FineCalculator ─→ FineHysteresis
@@ -457,14 +476,17 @@ Derfor finnes appen på tre flater i stedet:
 | Flate | Når | Hva den gir |
 |---|---|---|
 | **Bilskjermen** | Botometer er valgt i bilen | Speedometeret, tegnet på `NavigationTemplate` |
-| **Telefonen** | Maps eier bilskjermen | Samme tall, stor skrift, skjermen holdes våken |
+| **Telefonen** | Maps eier bilskjermen | `MainActivity`: samme tall, stor skrift, skjermen holdes våken |
 | **Varsel** | Alltid, i bakgrunnen | Heads-up når farten krysser inn i et nytt bøtenivå |
 
-**Begge skjermene har en «Avslutt»-knapp, og den betyr slutt.** Den stopper posisjonssporingen,
-ikke bare visningen: foreground-servicen legger seg ned og det vedvarende varselet forsvinner.
-Uten den var eneste vei ut av bilskjermen å starte en annen navigasjonsapp - og da lever servicen
-videre, appen leser posisjon, og varselet står, uten at noe på skjermen forklarer hvorfor. En app
-som leser GPS må kunne skrus av der den vises.
+**Bilskjermen har en «Avslutt»-knapp, og den betyr slutt.** Den stopper posisjonssporingen, ikke
+bare visningen: foreground-servicen legger seg ned og det vedvarende varselet forsvinner. Uten den
+var eneste vei ut av bilskjermen å starte en annen navigasjonsapp - og da lever servicen videre,
+appen leser posisjon, og varselet står, uten at noe på skjermen forklarer hvorfor. En app som
+leser GPS må kunne skrus av der den vises.
+
+Telefonen har ikke en slik knapp, men hovedbryteren: tilbake-knappen slipper telefonens holder,
+og «Botometer er på» slår av alt sammen, også bil-økta.
 
 `LocationForegroundService` eier GPS-abonnementet og lever videre når Maps overtar skjermen, så
 varslene virker uansett hvem som eier bilskjermen. Varselet er `IMPORTANCE_HIGH` og utvidet med
@@ -503,7 +525,8 @@ Nå teller `Tracking` hvem som vil ha sporing, og bilen holder på den så lenge
 så lenge skjermen vår vises. Økta destrueres når appen avsluttes i bilen eller telefonen kobles
 fra; det er der turen er over. Telefonen holder på sporingen mens speedometeret er synlig, som
 før, så tilbake-knappen der fortsatt slår av GPS-en når telefonen er den eneste flaten i bruk -
-men den slår den ikke lenger av for bilen. `TrackingHolders` er tellingen alene, uten Android
+men den slår den ikke lenger av for bilen. Hovedbryteren står over hele tellingen: er den av,
+slipper `Tracking.acquire` ingen holder inn i det hele tatt. `TrackingHolders` er tellingen alene, uten Android
 rundt seg, og `TrackingHoldersTest` låser den.
 
 **Dukker varselet opp på telefonen, men ikke i bilen,** er det en helt annen feil - da er

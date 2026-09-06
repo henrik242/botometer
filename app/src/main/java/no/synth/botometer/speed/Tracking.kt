@@ -1,6 +1,7 @@
 package no.synth.botometer.speed
 
 import android.content.Context
+import no.synth.botometer.Settings
 
 /**
  * Hvem som vil ha posisjonssporing. Ren telling, uten Android rundt seg, så regelen kan testes
@@ -60,8 +61,16 @@ object Tracking {
      */
     private var appContext: Context? = null
 
+    /**
+     * Hovedbryteren sjekkes her, i det ene punktet alle flatene går gjennom, og ikke i hver av
+     * dem. Ligger sjekken hos kallerne, er «av» bare av på de stedene noen husket den - og en
+     * bryter som slår av det meste er verre enn ingen bryter: da tror brukeren at appen er av
+     * mens den leser posisjon.
+     */
     @Synchronized
     fun acquire(context: Context, holder: TrackingHolders.Holder) {
+        if (!Settings(context).enabled) return
+
         appContext = context.applicationContext
         holders.add(holder)
         // Alltid, ikke bare når den første holderen kommer: blir tjenesten drept av systemet,

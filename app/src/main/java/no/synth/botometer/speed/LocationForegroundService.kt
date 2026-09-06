@@ -22,6 +22,7 @@ import kotlinx.coroutines.launch
 import no.synth.botometer.Diagnostics
 import no.synth.botometer.MainActivity
 import no.synth.botometer.R
+import no.synth.botometer.Settings
 import no.synth.botometer.alert.SpeedWatch
 import no.synth.botometer.alert.SpeedingAlerts
 import no.synth.botometer.limit.ManualLimit
@@ -51,6 +52,14 @@ class LocationForegroundService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // Hovedbryteren, en gang til. [Tracking] slipper ingen start gjennom når den er av, men
+        // en start kan ligge i kø fra før brukeren slo av, og systemet kan levere en intent på
+        // nytt. Det som leser posisjon skal sjekke selv, ikke stole på at noen andre gjorde det.
+        if (!Settings(this).enabled) {
+            stopSelf()
+            return START_NOT_STICKY
+        }
+
         // startForeground kan nekte, og gjør det som en SecurityException som tar hele appen med
         // seg. Fra Android 14 krever en location-tjeneste at appen er i en «eligible state»: er
         // posisjonstilgangen gitt som «mens appen er i bruk», er den en forgrunnstillatelse, og

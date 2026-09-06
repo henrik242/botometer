@@ -9,8 +9,11 @@ import android.net.Uri
 import android.provider.Settings as AndroidSettings
 import android.os.Build
 import android.os.Bundle
+import android.view.Gravity
 import android.view.View
+import android.view.WindowManager
 import android.widget.Button
+import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.Switch
@@ -33,9 +36,13 @@ import no.synth.botometer.alert.SpeedingAlerts
 import no.synth.botometer.fine.FineEstimate
 import no.synth.botometer.fine.FineTableRepository
 import no.synth.botometer.fine.TableStatus
+import no.synth.botometer.limit.ManualLimit
+import no.synth.botometer.limit.MatchConfidence
 import no.synth.botometer.speed.FixFreshness
 import no.synth.botometer.speed.GpsSpeedSource
 import no.synth.botometer.speed.SpeedFeed
+import no.synth.botometer.speed.Tracking
+import no.synth.botometer.speed.TrackingHolders
 
 /**
  * Telefon-delen er viktigere når appen sideloades enn når den kommer fra Play: den er både
@@ -47,6 +54,12 @@ import no.synth.botometer.speed.SpeedFeed
  * ikke hadde sto side om side med dem du trengte. Nå er rekkefølgen: svaret først, så det som
  * må fikses, så det du kan gjøre, og diagnostikken bak én knapp. Kopieringen tar hele rapporten
  * uansett om den vises.
+ *
+ * **Og speedometeret er her.** Det lå lenge i en egen aktivitet med en knapp for å komme dit, og
+ * det var en skjerm for mye: den viste de samme tallene fra det samme [SpeedWatch], og det du
+ * kommer til appen for skal ikke ligge bak en knapp. Nå starter denne skjermen sporingen mens
+ * den er synlig, holder skjermen våken, og lar fartsgrensen settes for hånd - alt telefonen
+ * skal kunne, på den ene flaten telefonen har.
  */
 class MainActivity : ComponentActivity() {
 
@@ -57,7 +70,9 @@ class MainActivity : ComponentActivity() {
     private lateinit var subline: TextView
     private lateinit var speedCard: LinearLayout
     private lateinit var speedValue: TextView
+    private lateinit var speedFine: TextView
     private lateinit var speedDetail: TextView
+    private lateinit var manualRow: LinearLayout
     private lateinit var problems: TextView
     private lateinit var diagnostics: TextView
     private lateinit var diagnosticsToggle: Button
@@ -72,6 +87,12 @@ class MainActivity : ComponentActivity() {
     private var watch: SpeedWatch? = null
 
     /**
+     * Siste avlesning, så [render] kan tegne kortet på nytt uten å vente på neste fix. Uten den
+     * ble hovedbryteren stående og vise fart i et sekund etter at den var slått av.
+     */
+    private var lastReading: SpeedWatch.Reading? = null
+
+    /**
      * Leses asynkront fra Android Auto. null til første svar kommer - og det skillet er verdt å
      * vise: «ikke lest ennå» og «ikke tilkoblet» er to helt forskjellige svar på hvorfor
      * bilskjermen ikke viser noe.
@@ -80,7 +101,11 @@ class MainActivity : ComponentActivity() {
 
     private val requestPermissions = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
-    ) { render() }
+    ) {
+        // Sporingen skal starte i det tilgangen kommer, ikke ved neste oppstart av appen.
+        startTracking()
+        render()
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -97,32 +122,33 @@ class MainActivity : ComponentActivity() {
             textSize = 14f
             setTextIsSelectable(true)
         }
-        // Live fart, når sporingen først er i gang. Skjermen skal kunne svare på «virker det?»
-        // med tall og ikke bare med grønne haker.
-        speedValue = TextView(this).apply { textSize = 34f }
+        // Selve speedometeret. Stort nok til å leses i periferien fra førersetet, uten
+        // animasjon: det skal kunne sees i et øyekast, ikke studeres.
+        speedValue = TextView(this).apply { textSize = 64f }
+        speedFine = TextView(this).apply { textSize = 26f }
         speedDetail = TextView(this).apply {
             textSize = 13f
             setTextColor(Color.rgb(120, 120, 125))
         }
+        manualRow = buildManualRow()
         speedCard = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            visibility = View.GONE
+            setPadding(0, 24, 0, 24)
             addView(speedValue)
+            addView(speedFine)
             addView(speedDetail)
+            addView(
+                HorizontalScrollView(this@MainActivity).apply {
+                    isHorizontalScrollBarEnabled = false
+                    addView(manualRow)
+                }
+            )
         }
 
         diagnostics = TextView(this).apply {
             textSize = 13f
             setTextIsSelectable(true)   // så brukeren kan lime rapporten inn i en issue
             visibility = View.GONE
-        }
-
-        // Det man faktisk kommer hit for. Full bredde, øverst blant knappene.
-        val speedometer = Button(this).apply {
-            text = getString(R.string.open_phone_speedometer)
-            setOnClickListener {
-                startActivity(Intent(this@MainActivity, PhoneSpeedometerActivity::class.java))
-            }
         }
 
         // Knappene som bare gir mening når noe er galt. De skjules ellers - en knapp for et
@@ -164,10 +190,24 @@ class MainActivity : ComponentActivity() {
             addView(fixBackground)
             addView(clearCrash)
 
-            addView(gap())
-            addView(speedometer)
-
             addView(heading(getString(R.string.settings_heading)))
+            // Hovedbryteren først. Den står over de to andre - er den av, betyr de ingenting -
+            // og en av-bryter som ligger nederst er en av-bryter man ikke finner.
+            addView(
+                toggle(
+                    R.string.setting_enabled,
+                    R.string.setting_enabled_help,
+                    settings.enabled,
+                ) { enabled ->
+                    settings.enabled = enabled
+                    // Bryteren skal virke i det den vippes, ikke ved neste oppstart. Av betyr
+                    // av for alle flatene, også bil-økta: den som slår av appen på telefonen
+                    // mens den står og sporer for bilskjermen, mener den som står og sporer.
+                    if (enabled) startTracking() else Tracking.stopAll()
+                    updateKeepScreenOn()
+                    lastReading = null
+                }
+            )
             addView(
                 toggle(
                     R.string.setting_phone_alerts,
@@ -181,13 +221,6 @@ class MainActivity : ComponentActivity() {
                     R.string.setting_car_alerts_help,
                     settings.carAlerts,
                 ) { settings.carAlerts = it }
-            )
-            addView(
-                toggle(
-                    R.string.setting_background,
-                    R.string.setting_background_help,
-                    settings.backgroundTracking,
-                ) { settings.backgroundTracking = it }
             )
 
             addView(gap())
@@ -247,64 +280,191 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
-     * Viser farten, men starter den ikke.
-     *
-     * Denne skjermen tar aldri [no.synth.botometer.speed.Tracking]-holder. Å åpne
-     * innstillingene skal ikke slå på GPS-en - da ville et vedvarende posisjonsvarsel dukket opp
-     * hver gang du sjekket en bryter, og appen ville lest posisjon uten at du ba om det. Kortet
-     * leser bare det som allerede strømmer: kjører bilskjermen, eller står telefonspeedometeret
-     * åpent bak, ser du tallene her også.
+     * Kortet leser [SpeedWatch] - det samme regnestykket bilskjermen og fartsvarslene bruker.
+     * Selve sporingen slås på i [onStart] og av i [onStop], så skjermen både viser farten og er
+     * grunnen til at den finnes, så lenge den er framme.
      */
     private fun observeSpeed() {
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 val w = watch ?: withContext(Dispatchers.IO) { SpeedWatch(this@MainActivity) }
                     .also { watch = it }
-                w.readings().collect { renderSpeed(it) }
+                w.readings().collect {
+                    lastReading = it
+                    renderSpeed(it)
+                }
             }
         }
         // Stopper sporingen, slutter fixene å komme, og kortet ville blitt stående med et tall
         // som ikke lenger gjelder. `null` er signalet om at tjenesten la seg ned.
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
-                SpeedFeed.fixes.collect { if (it == null) speedCard.visibility = View.GONE }
+                SpeedFeed.fixes.collect {
+                    if (it == null) {
+                        lastReading = null
+                        renderSpeed(null)
+                    }
+                }
             }
         }
     }
 
-    private fun renderSpeed(reading: SpeedWatch.Reading) {
+    override fun onStart() {
+        super.onStart()
+        startTracking()
+        updateKeepScreenOn()
+    }
+
+    /**
+     * Slipper bare telefonens egen holder. Er bil-økta i gang, sporer den videre - ellers ville
+     * et bytte til Maps på telefonen slått av fartsvarslene i bilen.
+     */
+    override fun onStop() {
+        super.onStop()
+        Tracking.release(TrackingHolders.Holder.PHONE)
+        window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+    }
+
+    private fun startTracking() {
+        if (!GpsSpeedSource.hasLocationPermission(this)) return
+        // [Tracking] sjekker hovedbryteren selv, så den trenger ikke sjekkes her også.
+        Tracking.acquire(this, TrackingHolders.Holder.PHONE)
+    }
+
+    /**
+     * Skjermen skal ikke slukke midt i en kjøretur - men bare når den faktisk viser noe. Er
+     * appen slått av, er dette en innstillingsside, og en innstillingsside har ingen grunn til
+     * å holde telefonen våken.
+     */
+    private fun updateKeepScreenOn() {
+        if (settings.enabled) {
+            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        } else {
+            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
+    }
+
+    /**
+     * «Auto» først, så de skiltede grensene. NVDB dekker ikke alt - private veger, ny veg,
+     * strekninger der fartsgrenseobjektet mangler - og der viste appen «Ukjent grense» og
+     * sluttet å regne. Et anslag brukeren selv står for er bedre enn ingenting.
+     *
+     * Bare telefonen kan sette den. På bilskjermen ville en rad med knapper vært en invitasjon
+     * til å fikle under kjøring, og grensen leses uansett fra det samme [ManualLimit] der.
+     */
+    private fun buildManualRow(): LinearLayout = LinearLayout(this).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+        addView(manualButton(null))
+        ManualLimit.choices.forEach { addView(manualButton(it)) }
+    }
+
+    private fun manualButton(kmt: Int?) = Button(this).apply {
+        text = kmt?.toString() ?: getString(R.string.manual_limit_auto)
+        textSize = 14f
+        minWidth = 0
+        minimumWidth = 0
+        setOnClickListener {
+            ManualLimit.set(kmt)
+            highlightManual()
+        }
+    }
+
+    /** Den valgte grensen må være synlig, ellers vet du ikke hva tallene på skjermen bygger på. */
+    private fun highlightManual() {
+        val active = ManualLimit.kmt.value
+        for (i in 0 until manualRow.childCount) {
+            val button = manualRow.getChildAt(i) as? Button ?: continue
+            val selected = if (active == null) {
+                button.text.toString() == getString(R.string.manual_limit_auto)
+            } else {
+                button.text.toString() == active.toString()
+            }
+            button.setTextColor(if (selected) Color.BLACK else Color.rgb(150, 150, 155))
+        }
+    }
+
+    /**
+     * @param reading null når det ikke finnes noe fix å vise - appen er slått av, tilgangen
+     * mangler, eller GPS-en har ikke svart ennå. De tre er ikke det samme, og kortet skal si
+     * hvilken av dem det er: «--» uten forklaring er en app som ser ødelagt ut.
+     */
+    private fun renderSpeed(reading: SpeedWatch.Reading?) {
+        highlightManual()
+        manualRow.visibility = if (settings.enabled) View.VISIBLE else View.GONE
+
+        if (reading == null) {
+            speedValue.setTextColor(Color.rgb(150, 150, 150))
+            speedValue.text = "--"
+            speedFine.setTextColor(Color.rgb(150, 150, 150))
+            speedFine.text = when {
+                !settings.enabled -> "Av"
+                !GpsSpeedSource.hasLocationPermission(this) -> "Ingen posisjon"
+                else -> "Venter på GPS"
+            }
+            speedDetail.text = when {
+                !settings.enabled -> "Slå den på igjen under INNSTILLINGER"
+                !GpsSpeedSource.hasLocationPermission(this) -> "Gi posisjonstilgang for å måle fart"
+                else -> "Sporingen går - første fix kan ta noen sekunder"
+            }
+            return
+        }
+
         val lost = reading.freshness == FixFreshness.LOST
         val estimate = reading.estimate
-
-        speedValue.setTextColor(
-            when {
-                lost -> Color.rgb(150, 150, 150)
-                estimate is FineEstimate.NoOffence -> Color.rgb(30, 140, 70)
-                estimate is FineEstimate.UnknownLimit -> Color.rgb(150, 150, 150)
-                estimate is FineEstimate.SimplifiedFine ->
-                    if (estimate.points == 0) Color.rgb(190, 150, 20) else Color.rgb(190, 110, 20)
-                estimate is FineEstimate.Prosecution -> Color.rgb(200, 45, 45)
-                else -> Color.rgb(150, 150, 150)
-            }
-        )
-        speedValue.text = buildString {
-            append(if (lost) "--" else "${reading.speedKmt.toInt()}")
-            append(" km/t")
-            reading.limitKmt?.let { append("   ·   grense $it") }
-            if (reading.manualLimit) append(" (manuell)")
-        }
-        speedDetail.text = when {
-            lost -> "Ingen GPS - sporingen går, men signalet er borte"
-            reading.freshness == FixFreshness.STALE -> "Mistet GPS-signalet - venter"
-            estimate is FineEstimate.UnknownLimit -> "Ukjent fartsgrense her"
-            estimate is FineEstimate.NoOffence -> "Ingen bot"
+        val accent = when {
+            lost -> Color.rgb(150, 150, 150)
+            estimate is FineEstimate.NoOffence -> Color.rgb(30, 140, 70)
+            estimate is FineEstimate.UnknownLimit -> Color.rgb(150, 150, 150)
             estimate is FineEstimate.SimplifiedFine ->
-                "${nok(estimate.amountNok)} kr · ${estimate.overKmt} km/t over"
-            estimate is FineEstimate.Prosecution ->
-                "Anmeldelse · ${estimate.overKmt} km/t over"
+                if (estimate.points == 0) Color.rgb(190, 150, 20) else Color.rgb(190, 110, 20)
+            estimate is FineEstimate.Prosecution -> Color.rgb(200, 45, 45)
+            else -> Color.rgb(150, 150, 150)
+        }
+
+        // «--» og ikke «0»: null er en måling, og når signalet er borte har vi ingen. Et nulltall
+        // ville dessuten sett ut som at bilen står stille.
+        speedValue.setTextColor(accent)
+        speedValue.text = if (lost) "--" else "${reading.speedKmt.toInt()}"
+
+        speedFine.setTextColor(accent)
+        speedFine.text = when {
+            lost -> "Ingen GPS"
+            estimate is FineEstimate.UnknownLimit -> "Ukjent grense"
+            estimate is FineEstimate.NoOffence -> "Ingen bot"
+            estimate is FineEstimate.SimplifiedFine -> "${nok(estimate.amountNok)} kr"
+            estimate is FineEstimate.Prosecution -> "Anmeldelse"
             else -> ""
         }
-        speedCard.visibility = View.VISIBLE
+
+        speedDetail.text = buildString {
+            when (reading.freshness) {
+                // Signalet først: alt annet på kortet bygger på et fix.
+                FixFreshness.LOST -> {
+                    append("Ingen GPS")
+                    reading.limitKmt?.let { append(" · fartsgrensen $it km/t gjelder fortsatt") }
+                }
+                FixFreshness.STALE -> append("Mistet GPS-signalet - venter")
+                FixFreshness.FRESH -> {
+                    append("km/t")
+                    reading.limitKmt?.let { append("  ·  grense $it") }
+                    if (reading.manualLimit) append(" (manuell)")
+                    // Gamle data skal se gamle ut, ikke bare være det.
+                    if (reading.match?.stale == true) append(" (gammel)")
+                    if (!reading.manualLimit && reading.match?.confidence == MatchConfidence.LOW) {
+                        append(" (usikkert vegvalg)")
+                    }
+                    when (estimate) {
+                        is FineEstimate.SimplifiedFine -> {
+                            append("  ·  ${estimate.overKmt} km/t over")
+                            if (estimate.points > 0) append("  ·  ${estimate.points} prikker")
+                        }
+                        is FineEstimate.Prosecution -> append("  ·  ${estimate.overKmt} km/t over")
+                        else -> Unit
+                    }
+                }
+            }
+        }
     }
 
     private fun nok(amount: Int) = amount.toString()
@@ -381,6 +541,7 @@ class MainActivity : ComponentActivity() {
 
         // Ett svar på «virker det?», øverst, i klartekst. Rangert etter hva som stopper mest.
         val trouble = buildList {
+            if (!settings.enabled) add("Botometer er slått av - ingen fart og ingen varsler")
             if (!location) add("Posisjonstilgang mangler - appen viser ingen fart")
             if (location && !background) add("«Tillat alltid» mangler - bilskjermen får ingen fart")
             if (!notifications) add("Varsler er slått av - ingen fartsvarsler noe sted")
@@ -408,6 +569,8 @@ class MainActivity : ComponentActivity() {
         fixPermissions.visibility = if (!location || !notifications) View.VISIBLE else View.GONE
         fixBackground.visibility = if (location && !background) View.VISIBLE else View.GONE
         clearCrash.visibility = if (crash != null) View.VISIBLE else View.GONE
+
+        renderSpeed(lastReading)
 
         report = buildReport(t, crash, location, background, notifications)
         diagnostics.text = report
@@ -531,6 +694,9 @@ class MainActivity : ComponentActivity() {
      * uansett til satsene er oppdatert.
      */
     private fun refreshIfStale() {
+        // Hovedbryteren er av, og den betyr av: da bruker appen heller ikke nett av seg selv.
+        // «Oppdater satser» virker fortsatt - det er noe brukeren ber om der og da.
+        if (!settings.enabled) return
         if (!tables.load().stale) return
         lifecycleScope.launch {
             tables.refresh()

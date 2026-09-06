@@ -22,6 +22,7 @@ import no.synth.botometer.R
 import no.synth.botometer.Settings
 import no.synth.botometer.alert.SpeedWatch
 import no.synth.botometer.speed.GpsSpeedSource
+import no.synth.botometer.speed.SpeedFeed
 import no.synth.botometer.speed.Tracking
 import no.synth.botometer.speed.TrackingHolders
 
@@ -49,6 +50,7 @@ class SpeedometerScreen(carContext: CarContext) : Screen(carContext), DefaultLif
     )
 
     private var collectJob: Job? = null
+    private var feedJob: Job? = null
 
     private val settings = Settings(carContext)
 
@@ -87,24 +89,43 @@ class SpeedometerScreen(carContext: CarContext) : Screen(carContext), DefaultLif
         collectJob = lifecycleScope.launch {
             watch.readings().collect { renderer.update(it) }
         }
+
+        // Slutter fixene å komme - typisk fordi hovedbryteren ble slått av på telefonen - står
+        // speedometeret igjen med siste frame. Et tall som ikke lenger gjelder ser ut som et
+        // tall som gjelder, så vi ber om templaten på nytt og lar den si hva som skjedde.
+        feedJob?.cancel()
+        feedJob = lifecycleScope.launch {
+            SpeedFeed.fixes.collect { if (it == null) invalidate() }
+        }
     }
 
     /**
-     * Tegningen stopper alltid. Posisjonssporingen bare hvis brukeren har slått av sporing i
-     * bakgrunnen.
+     * Bare tegningen. Sporingen holdes av økta, ikke av denne skjermen.
      *
-     * Verten stopper denne skjermen i det Google Maps tar over bilskjermen. Slipper vi sporingen
-     * her, dør fartsvarslene i samme øyeblikk som de blir den eneste flaten appen har igjen - så
-     * standard er å holde på den til økta dør. Den som heller vil at appen ikke leser posisjon
-     * uten at noe av den er synlig, får det valget, og betaler med varslene.
+     * Verten stopper skjermen vår i det Google Maps tar over bilskjermen. Slapp vi sporingen
+     * her, døde fartsvarslene i samme øyeblikk som de ble den eneste flaten appen hadde igjen.
+     * [BotometerSession] slipper CAR-holderen når økta dør, og hovedbryteren i telefon-appen
+     * slår av alt sammen for den som ikke vil at appen leser posisjon i det hele tatt.
      */
     private fun stopDrawing() {
         collectJob?.cancel()
         collectJob = null
-        if (!settings.backgroundTracking) Tracking.release(TrackingHolders.Holder.CAR)
+        feedJob?.cancel()
+        feedJob = null
     }
 
     override fun onGetTemplate(): Template {
+        // Hovedbryteren er slått av på telefonen. Da skal bilskjermen si det, ikke stå med et
+        // tomt speedometer som ser ut som en app uten GPS-dekning.
+        if (!settings.enabled) {
+            return MessageTemplate.Builder(
+                "Botometer er slått av. Slå den på igjen i appen på telefonen."
+            )
+                .setTitle("Avslått")
+                .setHeaderAction(Action.APP_ICON)
+                .build()
+        }
+
         if (!GpsSpeedSource.hasLocationPermission(carContext)) {
             return MessageTemplate.Builder("Botometer trenger posisjonstilgang. Gi tilgang i appen på telefonen, så kom tilbake hit.")
                 .setTitle("Mangler tilgang")

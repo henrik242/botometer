@@ -89,17 +89,13 @@
             android:exported="false"
             android:foregroundServiceType="location" />
 
-        <!-- Speedometeret på telefonen, til bruk mens Maps eier bilskjermen. Ikke exported:
-             ingen andre apper har noe her å gjøre. -->
-        <activity
-            android:name=".PhoneSpeedometerActivity"
-            android:exported="false"
-            android:label="@string/phone_speedometer_title"
-            android:screenOrientation="fullSensor" />
-
+        <!-- Speedometeret ligger her, ikke i en egen aktivitet. To skjermer som viste de samme
+             tallene fra det samme SpeedWatch var én for mye, og det du kommer til appen for skal
+             ikke ligge bak en knapp. -->
         <activity
             android:name=".MainActivity"
-            android:exported="true">
+            android:exported="true"
+            android:screenOrientation="fullSensor">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
