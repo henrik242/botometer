@@ -48,11 +48,14 @@ class SpeedingAlerts(
                 // og det er en synlig løgn på skjermen.
                 runCatching { CarNotificationManager.from(context).cancel(NOTIFICATION_ID) }
                     .onFailure { Diagnostics.alertFailed("kunne ikke trekke tilbake: ${it.message}") }
-            is AlertPolicy.Decision.Alert -> post(decision.estimate)
+            // Hele avlesningen, ikke bare anslaget: «hvor mye over» skal regnes av farten og
+            // grensen, ikke av bøtegrunnlaget. Se ReadingText.overKmt.
+            is AlertPolicy.Decision.Alert -> post(reading)
         }
     }
 
-    private fun post(estimate: FineEstimate) {
+    private fun post(reading: SpeedWatch.Reading) {
+        val estimate = reading.estimate
         // «Bot: 4 800 kr» og ikke bare beløpet: i den sammenslåtte varselskyggen er et tall
         // alene uten kontekst, og de fem tegnene overlever avkortingen.
         val title = when (estimate) {
@@ -63,7 +66,7 @@ class SpeedingAlerts(
 
         val text = when (estimate) {
             is FineEstimate.SimplifiedFine, is FineEstimate.Prosecution ->
-                ReadingText.consequences(estimate)
+                ReadingText.consequences(reading)
             else -> return
         }
 

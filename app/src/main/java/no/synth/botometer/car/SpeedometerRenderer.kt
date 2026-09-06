@@ -248,7 +248,7 @@ class SpeedometerRenderer(
                 if (margin != null && margin <= 10) "$margin km/t til første bot" else "Innenfor"
             }
             is FineEstimate.SimplifiedFine, is FineEstimate.Prosecution ->
-                ReadingText.consequences(estimate)
+                ReadingText.consequences(r)
         }
     }
 

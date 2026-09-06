@@ -366,6 +366,17 @@ ut som «her finnes det ingen fartsgrense».
 i praksis 3 km/t opp til 100 km/t, 3 % over. Uten det ville appen systematisk overdrive boten i
 grenseland. Fradraget ligger i `Tolerance` i satsfilen, ikke i koden.
 
+**Men fradraget hører ikke hjemme på skjermen.** «X km/t over» ble lenge skrevet ut fra
+`FineEstimate.overKmt`, altså BØTEGRUNNLAGET: 84 i en 80-sone ga grunnlag 81, og appen skrev
+«1 km/t over». Det er riktig svar på hvilken sats som gjelder, og feil svar på det spørsmålet
+skjermen faktisk blir stilt — du kjører 4 km/t for fort. Fradraget er en juridisk gunst, ikke en
+beskrivelse av farten din, og et speedometer som legger den inn i tallet forteller føreren at han
+ligger nærmere grensen enn han gjør.
+
+`ReadingText.overKmt` regner derfor fra fart og fartsgrense, ikke fra grunnlaget — og fra den
+VISTE farten, så tallene på skjermen går opp: står det «84 km/t · grense 80», står det «4 km/t
+over». Grunnlaget lever videre der det hører hjemme, i oppslaget som velger satsen.
+
 **Hvorfor hysterese, og hvorfor den er usymmetrisk:** GPS-farten vaker et par tideler. Ligger du
 på nøyaktig 16 km/t over, hoppet trinnet mellom 15 og 16 flere ganger i sekundet - og beløpet
 mellom 5 950 og 8 650 kroner. To steder trengte demping, og de trenger hver sin:

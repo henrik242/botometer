@@ -62,19 +62,42 @@ object ReadingText {
     }
 
     /**
+     * Hvor mange km/t over fartsgrensen bilen FAKTISK kjører.
+     *
+     * Ikke det samme som [FineEstimate.SimplifiedFine.overKmt], og det er hele poenget.
+     * Politiet trekker fra et sikkerhetsfradrag før overtredelsen fastsettes - 3 km/t opp til
+     * 100 - så 84 i en 80-sone gir grunnlag 81 og dermed 1 km/t over i BOTENS forstand. Appen
+     * skrev det tallet på skjermen, og det er feil svar på spørsmålet den blir stilt: du kjører
+     * 4 km/t for fort. Fradraget er en juridisk gunst, ikke en beskrivelse av farten din.
+     *
+     * Regnet fra den VISTE farten, ikke fra rådataene, så tallene på skjermen går opp: står det
+     * «84 km/t · grense 80», skal det stå «4 km/t over». (Grensen er et heltall, så
+     * `round(fart) - grense` og `round(fart - grense)` gir uansett samme svar.)
+     */
+    fun overKmt(reading: SpeedWatch.Reading): Int? =
+        reading.limitKmt?.let { reading.speedKmt.roundToInt() - it }
+
+    /**
      * Halen som forklarer beløpet: hvor mye over, prikker, førerrett, usikkerhet.
      *
      * Førerretten er ikke pynt. Den var med i bilen og i varselet, men ikke på telefonen - og
      * telefonen er flaten du ser på. 24 km/t over i en 50-sone sto som «10 400 kr · 24 km/t
      * over · 6 prikker» og fortiet det ene som faktisk endrer kvelden din.
      *
+     * Tar en [SpeedWatch.Reading] og ikke bare en [FineEstimate], nettopp fordi «hvor mye over»
+     * skal komme fra farten og grensen - se [overKmt] - og ikke fra bøtegrunnlaget.
+     *
      * @param separator flatene har ulik luft: bilskjermen og varselet bruker « · », telefonen
      * setter mer luft rundt fordi teksten er mindre.
      */
-    fun consequences(estimate: FineEstimate, separator: String = " · "): String = buildString {
+    fun consequences(reading: SpeedWatch.Reading, separator: String = " · "): String = buildString {
+        val estimate = reading.estimate
+        // Faller tilbake på bøtegrunnlaget bare hvis grensen mangler - og da finnes det ingen
+        // bot å forklare heller, så grenen er i praksis død.
+        val over = overKmt(reading)
         when (estimate) {
             is FineEstimate.SimplifiedFine -> {
-                append("${estimate.overKmt} km/t over")
+                append("${over ?: estimate.overKmt} km/t over")
                 if (estimate.points > 0) append("$separator${estimate.points} prikker")
                 append(licence(estimate.licence, separator))
                 // Satsen gjelder bare motorveg, og vegtypen er ukjent. Et beløp som ser sikkert
@@ -82,7 +105,7 @@ object ReadingText {
                 if (estimate.uncertain) append(" (usikker)")
             }
             is FineEstimate.Prosecution -> {
-                append("${estimate.overKmt} km/t over")
+                append("${over ?: estimate.overKmt} km/t over")
                 append("${separator}over taket for forenklet forelegg")
                 append(licence(estimate.licence, separator))
             }

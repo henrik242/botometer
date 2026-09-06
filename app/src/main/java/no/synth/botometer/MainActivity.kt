@@ -511,7 +511,7 @@ class MainActivity : ComponentActivity() {
                     if (!reading.manualLimit && reading.match?.confidence == MatchConfidence.LOW) {
                         append(" (usikkert vegvalg)")
                     }
-                    ReadingText.consequences(reading.estimate, separator = "  ·  ")
+                    ReadingText.consequences(reading, separator = "  ·  ")
                         .takeIf { it.isNotEmpty() }
                         ?.let { append("  ·  $it") }
                 }

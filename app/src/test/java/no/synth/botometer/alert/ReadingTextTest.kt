@@ -31,21 +31,58 @@ class ReadingTextTest {
         assertEquals("1 250", ReadingText.nok(1250))
     }
 
+    /**
+     * 84 i en 80-sone er 4 km/t for fort. Appen skrev «1 km/t over», fordi den viste
+     * BØTEGRUNNLAGET: politiet trekker fra 3 km/t sikkerhetsfradrag før overtredelsen
+     * fastsettes, så grunnlaget er 81. Fradraget er en juridisk gunst, ikke en beskrivelse av
+     * farten - og spørsmålet skjermen svarer på er «hvor fort kjører jeg».
+     */
+    @Test
+    fun `hvor mye over regnes av farten, ikke av botegrunnlaget`() {
+        val reading = reading(
+            speedKmt = 84.0,
+            limitKmt = 80,
+            estimate = FineEstimate.SimplifiedFine(
+                amountNok = 1250,
+                points = 0,
+                licence = LicenceOutcome.BEHOLDER,
+                overKmt = 1,          // grunnlaget, etter fradrag - det som velger satsen
+                band = "1-5",
+            ),
+        )
+
+        assertEquals(4, ReadingText.overKmt(reading))
+        assertEquals("4 km/t over", ReadingText.consequences(reading))
+    }
+
+    /** Og tallene på skjermen skal gå opp: vist fart minus grense er det som står. */
+    @Test
+    fun `tallene paa skjermen gaar opp`() {
+        val reading = reading(speedKmt = 84.6, limitKmt = 80, estimate = fine(points = 0))
+
+        assertEquals("85", ReadingText.speed(reading))
+        assertEquals(5, ReadingText.overKmt(reading))
+    }
+
     @Test
     fun `tap av forerrett staar i konsekvensene`() {
         // Telefonen droppet dette helt - på flaten som nå er hovedspeedometeret. 24 km/t over i
         // en 50-sone sto som «10 400 kr · 24 km/t over · 6 prikker» og fortiet det ene som
         // faktisk endrer kvelden din.
         val text = ReadingText.consequences(
-            FineEstimate.SimplifiedFine(
-                amountNok = 10_400,
-                points = 6,
-                licence = LicenceOutcome.INNDRAS,
-                overKmt = 24,
-                band = "21-25",
+            reading(
+                speedKmt = 77.0,
+                limitKmt = 50,
+                estimate = FineEstimate.SimplifiedFine(
+                    amountNok = 10_400,
+                    points = 6,
+                    licence = LicenceOutcome.INNDRAS,
+                    overKmt = 24,
+                    band = "21-25",
+                ),
             )
         )
-        assertTrue(text, text.contains("24 km/t over"))
+        assertTrue(text, text.contains("27 km/t over"))
         assertTrue(text, text.contains("6 prikker"))
         assertTrue(text, text.contains("tap av førerrett"))
     }
@@ -55,13 +92,17 @@ class ReadingTextTest {
         // Satsen gjelder bare motorveg og vegtypen er ukjent. Bilen skrev «(usikker)»,
         // telefonen viste beløpet som om det var sikkert.
         val text = ReadingText.consequences(
-            FineEstimate.SimplifiedFine(
-                amountNok = 12_800,
-                points = 0,
-                licence = LicenceOutcome.BEHOLDER,
-                overKmt = 38,
-                band = "36-40",
-                uncertain = true,
+            reading(
+                speedKmt = 131.0,
+                limitKmt = 90,
+                estimate = FineEstimate.SimplifiedFine(
+                    amountNok = 12_800,
+                    points = 0,
+                    licence = LicenceOutcome.BEHOLDER,
+                    overKmt = 38,
+                    band = "36-40",
+                    uncertain = true,
+                ),
             )
         )
         assertTrue(text, text.contains("(usikker)"))
@@ -70,23 +111,33 @@ class ReadingTextTest {
     @Test
     fun `en beholdt forerrett nevnes ikke`() {
         val text = ReadingText.consequences(
-            FineEstimate.SimplifiedFine(
-                amountNok = 1250,
-                points = 0,
-                licence = LicenceOutcome.BEHOLDER,
-                overKmt = 1,
-                band = "1-5",
+            reading(
+                speedKmt = 84.0,
+                limitKmt = 80,
+                estimate = FineEstimate.SimplifiedFine(
+                    amountNok = 1250,
+                    points = 0,
+                    licence = LicenceOutcome.BEHOLDER,
+                    overKmt = 1,
+                    band = "1-5",
+                ),
             )
         )
-        assertEquals("1 km/t over", text)
+        assertEquals("4 km/t over", text)
     }
 
     @Test
     fun `en anmeldelse sier bade hvor mye over og hva det betyr`() {
         val text = ReadingText.consequences(
-            FineEstimate.Prosecution(points = 8, overKmt = 45, licence = LicenceOutcome.INNDRAS)
+            reading(
+                speedKmt = 128.0,
+                limitKmt = 80,
+                estimate = FineEstimate.Prosecution(
+                    points = 8, overKmt = 45, licence = LicenceOutcome.INNDRAS,
+                ),
+            )
         )
-        assertTrue(text, text.contains("45 km/t over"))
+        assertTrue(text, text.contains("48 km/t over"))
         assertTrue(text, text.contains("over taket for forenklet forelegg"))
         assertTrue(text, text.contains("tap av førerrett"))
     }
@@ -126,6 +177,7 @@ class ReadingTextTest {
         speedKmt: Double,
         estimate: FineEstimate = FineEstimate.NoOffence,
         lost: Boolean = false,
+        limitKmt: Int? = 60,
     ) = SpeedWatch.Reading(
         fix = fix(speedKmt),
         match = null,
@@ -133,7 +185,7 @@ class ReadingTextTest {
         freshness = if (lost) no.synth.botometer.speed.FixFreshness.LOST
         else no.synth.botometer.speed.FixFreshness.FRESH,
         speedKmt = speedKmt,
-        limitKmt = 60,
+        limitKmt = limitKmt,
         manualLimit = false,
     )
 
