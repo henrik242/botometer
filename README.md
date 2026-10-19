@@ -5,685 +5,112 @@ risiko for tap av førerrett, basert på gjeldende fartsgrense fra NVDB.
 
 ```
 ┌──────────────────────────────┐
-│            97          ⃝80  │   fart (km/t) + skiltet fartsgrense
+│           100          ⃝80  │   fart (km/t) + skiltet fartsgrense
 │           km/t               │
 │                              │
 │         7 450 kr             │   forenklet forelegg
-│  17 km/t over · 2 prikker    │
+│  20 km/t over · 2 prikker    │
 │   EV6 S75D1 · satser 2026… │
 └──────────────────────────────┘
 ```
 
-## Fire ting du bør vite før du bygger
+## Bygg og installer
 
-**1. Appen distribueres ikke via Google Play, og er bygget for det.** Car App Library har faste
-kategorier (navigation, parking, charging, POI, IoT, media, messaging). Det finnes ingen
-«dashboard»-kategori, og bare navigasjonsapper får en fri tegneflate (`NavigationTemplate` +
-`SurfaceCallback`) — alle andre templates er ferdigdefinerte lister du ikke kan tegne et
-speedometer i. Appen deklarerer seg derfor som `androidx.car.app.category.NAVIGATION`, noe som
-ikke ville passert Play-review siden kategorien krever faktisk turn-by-turn-navigasjon.
-
-Men sideloading er ikke veien rundt det, slik denne README-en tidligere hevdet. Android Autos
-«Ukjente kilder» gjelder **ikke** apper bygget på Car App Library. Google sier det rett ut:
-
-> Android Auto has a developer option that lets you run apps that aren't installed from a trusted
-> source. This setting applies to media, messaging notifications, and parked apps but doesn't
-> apply to apps built using the Android for Cars App Library.
-
-En sidelastet templat-app dukker derfor **aldri** opp i en ekte bil, uansett hvor riktig
-manifestet er - og verten sier ikke fra. Den utelater bare oppføringen. Det kostet en runde med
-feilsøking i manifestet før noen leste testdokumentasjonen. Se «Hvordan appen faktisk kommer inn
-i bilen» nedenfor.
-
-**2. GPS-abonnementet eies av en foreground service.** Fra Android 10 får en app ikke posisjon når
-den ikke er i forgrunnen, og en `CarAppService` gir ikke forgrunnsstatus - appen ville fått fart de
-første sekundene og deretter stillstand så snart telefonskjermen slukket. `LocationForegroundService`
-(type `location`) eier abonnementet og publiserer til `SpeedFeed`; skjermen leser derfra.
-
-`ACCESS_BACKGROUND_LOCATION` var lenge bevisst utelatt her, med foreground service som «riktigere
-design». Det holdt ikke. Fra Android 14 er posisjon gitt som «mens appen er i bruk» en
-*forgrunnstillatelse*: appen får bare starte en `location`-tjeneste mens den selv er i forgrunnen,
-og bilskjermen teller ikke - telefon-appen er i bakgrunnen mens speedometeret vises i bilen.
-Resultatet var en `SecurityException` som tok hele appen med seg. De to tingene løser altså ikke
-det samme problemet, og foreground-servicen er fortsatt nødvendig; den er bare ikke nok.
-
-Tillatelsen koster personvern, og det skal stå: appen kan lese posisjon uten at noe er synlig på
-telefonen. Motvekten er at foreground-servicen alltid viser et varsel så lenge sporingen er på, og
-at posisjonen fortsatt aldri forlater telefonen - se «Personvern».
-
-**3. Farten kommer fra GPS, ikke fra bilen.** `CarInfo.addSpeedListener` finnes, men krever
-`com.google.android.gms.permission.CAR_SPEED` og returnerer `STATUS_UNAVAILABLE` på de fleste
-hovedenheter. GPS er dessuten *riktigere* for formålet: bilens speedometer viser bevisst litt for
-høyt (ECE R39 tillater overrapportering, aldri underrapportering), mens politiet måler den faktiske
-farten. `CarSpeedSource` er med, men bare for å kunne vise avviket.
-
-**4. Bøtesatsene må tolkes, ikke parses.** Lovdata har et åpent datasett med gjeldende sentrale
-forskrifter (NLOD 2.0, uten autentisering), så kilden *er* maskinlesbar. Men beløpene står som
-løpende tekst i § 1, prikker og førerrett står i to andre forskrifter, og sikkerhetsfradraget
-står ikke i noen forskrift i det hele tatt — det er påtalepraksis. En parser ville produsert
-kronebeløp som er stille feil. Satsene ligger derfor som en versjonert asset i
-`app/src/main/assets/botesatser.json`, med `versjon` synlig i UI og i unit-testene, vedlikeholdt
-for hånd. Det som *er* automatisert er varselet: `.github/workflows/satser.yml` sammenlikner
-endringsdatoene i Lovdatas datasett med `satser/kilder.json` hver mandag, og feiler når en av de
-tre rettskildene er endret. Gjeldende satser er fra **15. februar 2026** (FOR-2026-02-06-147,
-som endrer FOR-1990-06-29-492 § 1). Når satsene justeres — det skjer omtrent årlig — oppdaterer
-du JSON-filen, forventningene i `FineCalculatorTest` og `sistEndret` i `satser/kilder.json`.
-
-## Hvordan appen faktisk kommer inn i bilen
-
-Verten krever at appen er installert fra en *trusted source*. I praksis betyr det Play, og
-«Ukjente kilder» hjelper ikke for en templat-app. Det finnes likevel to veier inn som ikke
-innebærer publisering eller review:
-
-**Internal App Sharing** (`play.google.com/console/internalappsharing`) er den enkleste. Du laster
-opp appen, får en lenke, åpner den på telefonen og installerer. Play står som installasjonskilde,
-og appen dukker opp i bilen. **Ingen review, ingen Data Safety-erklæring, ingen publisering** - og
-dermed heller ingen som vurderer om NAVIGATION-kategorien er berettiget. Det krever en
-Play Console-konto (engangsavgift), men ikke en utgivelse.
-
-Den tar imot **både APK og AAB** - hjelpesiden heter «Share app bundles and APKs internally». Blir
-du bedt om en AAB, står du sannsynligvis på opplastingssiden til et utgivelsesspor og ikke på
-Internal App Sharing. Signeringsnøkkelen spiller heller ingen rolle her: Play signerer opplastingen
-om med sitt eget testsertifikat, så APK-en fra CI duger som den er, debug-nøkkel og alt.
-
-Play avviser forresten en artefakt som hevder å være både Automotive OS-app og Android Auto-app:
-«cannot declare `android.hardware.type.automotive` device feature and
-`com.google.android.gms.car.application` metadata at the same time». Manifestet har derfor ingen
-`<uses-feature>` for AOS - appen er projisert. Det oppdages først ved opplasting, altså etter et
-grønt bygg, så `CarAppManifestTest` holder dem ute i stedet.
-
-**Internt testspor** er alternativet om du vil ha flere enn deg selv på den, med opptil 100
-testere og oppdateringer som er ute i løpet av minutter. Det sporet krever **AAB** - og en *fast*
-keystore: CI signerer med en ny tilfeldig debug-nøkkel for hver kjøring når secretsene mangler, og
-Play avviser andre opplasting fordi nøkkelen har byttet seg. Legg inn `BOTOMETER_KEYSTORE_BASE64`
-m.m. som secrets før du går den veien.
-
-**Desktop Head Unit** virker fortsatt med en lokalt installert APK, og er derfor stedet å utvikle:
+Testene krever JDK 21 eller nyere (Robolectric mot SDK 36).
 
 ```bash
-$ANDROID_HOME/extras/google/auto/desktop-head-unit
+./gradlew :app:test
+./gradlew :app:assembleRelease   # APK, app/build/outputs/apk/release/
+./gradlew :app:bundleRelease     # AAB til Play
 ```
 
-Kravet om trusted source gjelder ekte biler. Det er DHU som gjør utviklingsløkka mulig i det hele
-tatt - uten den måtte hver endring gjennom en opplasting.
+Bruk release, ikke debug: debug-bygg har `ALLOW_ALL_CAR_HOSTS = true`, som lar en vilkårlig app
+binde seg til `CarAppService` og lese posisjonen. CI (`.github/workflows/apk.yml`) bygger og
+legger ved APK-en på hver push. Filnavnet bærer kortshaen.
 
-**Det som ikke endrer seg med noen av dem:** template-restriksjonene håndheves av *bilverten* i
-runtime, ikke av Play. Du får fortsatt bare tegne fritt inne i `NavigationTemplate`s surface.
-`CAR_SPEED` er også vertsgatet, ikke distribusjonsgatet.
+**Appen må installeres fra Play for å vises i en ekte bil.** «Ukjente kilder» i Android Auto
+gjelder ikke Car App Library-apper, og verten utelater en sidelastet app uten å si fra.
 
-**Og targetSdk-jakten slipper du ikke unna.** Et utgivelsesspor krever gjeldende nivå - «must
-target at least API level 36» - og en templat-app må gjennom Play for å vises i bilen i det hele
-tatt. Antakelsen om at Play-fri distribusjon sparte oss for den holdt bare så lenge artefakten
-aldri skulle den veien. `targetSdk` følger derfor Play, og oppgraderingen har konsekvenser å ta
-med: fra 36 tegner appen alltid under status- og navigasjonsfeltet, og
-`windowOptOutEdgeToEdgeEnforcement` er avviklet. `MainActivity` legger systemets innrykk oppå sitt
-eget i stedet.
+- **Internal App Sharing** er enklest: last opp APK eller AAB, åpne lenken på telefonen. Ingen
+  review, og Play signerer om, så CI-APK-en duger.
+- **Internt testspor** krever AAB og en fast keystore (`BOTOMETER_KEYSTORE_BASE64` m.m. som
+  secrets i CI, eller `botometer.keystore` i `~/.gradle/gradle.properties` lokalt).
+- **Desktop Head Unit** virker med en lokalt installert APK, og er stedet å utvikle:
+  `$ANDROID_HOME/extras/google/auto/desktop-head-unit`. DHU gir ingen GPS-fart.
 
-**Oppdateringskanalen for satsene, som fortsatt er det viktigste designvalget:** Internal App
-Sharing er ingen oppdateringskanal - den varsler ikke, og den oppdaterer ikke noe av seg selv. En
-APK bygget i 2026 ville kjørt 2026-satser i 2029 i stillhet, og satsene justeres omtrent årlig.
-Derfor er satsene flyttet ut av APK-en:
+### Vises ikke appen i bilen?
 
-- `FineTableRepository` laster fra `satser/botesatser.json` i repoet, med APK-asseten som fallback
-- Nyeste `versjon` vinner, så en fersk installasjon overstyrer en gammel cache
-- JSON-en parses *før* den skrives til disk, ellers ville en ødelagt respons overlevd restart
-- Over 400 dager gamle satser flagges både i telefon-appen og i footeren på bilskjermen
-- Utdaterte satser hentes automatisk når telefon-appen åpnes; knappen er der for å tvinge en oppdatering
+Åpne telefon-appen. Diagnostikken kjører de samme PackageManager-sjekkene som verten:
+installert utenfor Play (nesten alltid årsaken), manglende `android:label`/`android:icon` på
+`<service>`, eller `CarAppService` fjernet av R8. Er alt grønt, les vertsloggen med
+`./tools/bil-diagnostikk.sh` - den slår enhver hypotese.
 
-Et tall som er feil uten å se feil ut er verre enn ingen tall.
+## Designvalg
 
-**Signering.** Har du egen keystore, legg inn `botometer.keystore` m.m. i
-`~/.gradle/gradle.properties`. Uten dem signeres release med debug-nøkkelen: installerbar, men
-debug-nøkkelen er offentlig kjent, så signaturen beviser ingenting om opphav. God nok til å
-installere selv, ikke god nok til å dele videre. `ALLOW_ALL_CAR_HOSTS` er `false` i alle
-release-bygg uansett nøkkel — uten vertsvalidering kan en vilkårlig app på telefonen binde seg til
-`CarAppService` og lese posisjonen din, og en sideloadet APK har ingen Play-signatur som gjenstår
-som kontroll.
-
-**Tre brytere, og hva hver av dem faktisk gjør.** `Settings` ligger i SharedPreferences og
-overlever omstart - til forskjell fra `ManualLimit`, som nullstilles hver tur, fordi det ene er
-en beslutning om appen og det andre et anslag for én strekning.
-
-- **Varsler på telefonen.** Av kan ikke bety «ingenting postes»: bilverten leser varslene fra
-  telefonens varselstrøm, så et varsel i bilen forutsetter et varsel på telefonen. Av gir derfor
-  en stille kanal - ingen heads-up, bare en linje i skyggen - mens bilen får sitt som før.
-  To kanaler, fordi viktighet ikke kan endres etter at en kanal er opprettet.
-- **Varsler på bilskjermen.** Av betyr at varselet postes uten `CarAppExtender`, og uten den
-  viser verten ingenting. Det er selve mekanismen, ikke noe vi ber verten respektere. Merk at
-  `CarNotificationManager.notify` LEGGER PÅ en tom extender hvis varselet mangler en, så
-  avslåingen må gå utenom den - ellers ville bryteren ikke virke i det hele tatt.
-- **Botometer er på.** Hovedbryteren. Av betyr av: ingen posisjonssporing, ingen
-  foreground-tjeneste, ingen speedometer noe sted, ingen fartsvarsler og ingen oppslag mot NVDB.
-  Bilskjermen sier «Avslått» i stedet for å stå med et tomt speedometer.
-
-  Den het en gang «sporing i bakgrunnen» og betydde bare om bil-økta fikk holde på GPS-en mens
-  Maps eide bilskjermen - altså et valg mellom to grader av *på*. En bryter som lar appen lese
-  posisjon uansett stilling er ikke en av-bryter. En app som leser GPS må kunne skrus helt av,
-  ett sted, uten at brukeren må gjette hvilke deler som fortsatt går.
-
-  Sjekken ligger i `Tracking.acquire`, det ene punktet alle flatene går gjennom for å starte
-  sporing, og en gang til i `LocationForegroundService.onStartCommand` - det som leser posisjon
-  skal sjekke selv, ikke stole på at noen andre gjorde det. Lå sjekken hos kallerne, ville «av»
-  bare vært av de stedene noen husket den. `TrackingKillSwitchTest` låser begge.
-
-  Bryteren fikk også en NY nøkkel i SharedPreferences, ikke den gamle: den som slo av «sporing i
-  bakgrunnen» ba ikke om at hele appen skulle bli mørk, og skal ikke oppdage det etter en
-  oppdatering.
-
-  «Oppdater satser» virker fortsatt når appen er av - det er noe brukeren ber om der og da. Det
-  automatiske satsoppslaget ved oppstart gjør ikke det.
-
-Er begge varselbryterne av, postes ingenting - og `Diagnostics` skriver at det var derfor. Et
-varsel som uteble fordi brukeren slo det av ser ellers helt likt ut som et varsel som ikke virket,
-og da feilsøker man en innstilling.
-
-**Telefon-appen er nå oppsett, oppdateringskanal, innstillinger og diagnostikk.** Uten Play Console finnes ingen
-crash-rapporter, så appen må rapportere seg selv. `Diagnostics` viser NVDB-kall, siste rute, siste
-treff, siste bom og kandidatene matchingen forkastet — vinneren alene sier ikke hvorfor den vant.
-`CrashLog` tar vare på siste stacktrace: et krasj etterlot seg ellers ingenting, og «den krasjer
-av og til» er ikke noe å feilsøke på. Diagnostikken vises aldri i bilen — det er distraksjon
-uansett hvor nyttig den er.
-
-Skjermen var lenge én tekstblokk med sju knapper under. Alt sto der, men det viktigste - «virker
-det?» - måtte leses ut av fem skjermhøyder diagnostikk, og knapper for problemer du ikke hadde sto
-side om side med dem du trengte. Rekkefølgen er nå svaret først («Klar» eller «Trenger oppsett»,
-med hva som mangler), så bare de fikseknappene som hører til et problem du faktisk har, så
-speedometeret, så innstillingene - og diagnostikken bak «Vis diagnostikk». «Kopier diagnostikk»
-tar hele rapporten uansett om den vises.
-
-**Speedometeret ligger på den samme skjermen.** Det lå lenge i en egen aktivitet med en knapp for
-å komme dit, og det var en skjerm for mye: den viste de samme tallene fra det samme `SpeedWatch`,
-og det du kommer til appen for skal ikke ligge bak en knapp. Nå står fart, bøtebeløp og
-fartsgrense rett under overskriften, i stor skrift, med knapperaden for manuell fartsgrense under.
-Det er også det korteste svaret på «virker det?»: tall slår grønne haker.
-
-Skjermen tar en `Tracking`-holder mens den er synlig, og slipper den i `onStop`. Den både viser
-farten og er grunnen til at den finnes, så lenge den er framme - og skjermen holdes våken imens,
-siden telefonen i holderen er den flaten som står ved siden av Maps. Er hovedbryteren av, er
-dette bare en innstillingsside igjen, og da holdes ingenting våkent og ingenting spores.
-
-Kortet skiller på hvorfor det ikke er noe å vise: «Av», «Ingen posisjon» og «Venter på GPS» er tre
-forskjellige svar. «--» uten forklaring er en app som ser ødelagt ut.
-
-Telefonen har **ingen «Avslutt»-knapp**, men **trykk tilbake to ganger** for å avslutte - slik
-alle andre gjør det. Ett trykk sier bare fra; det andre innen to sekunder stopper
-posisjonssporingen og fjerner det vedvarende varselet, akkurat som «Avslutt» på bilskjermen.
-
-Ett trykk kan ikke få lov, for avslutt betyr slutt: `Tracking.stopAll()` slipper også bilens
-holdere. Et uhell med tommelen skal ikke slå av fartsvarslene midt i en kjøretur. Vil du bare
-legge appen bort uten å stoppe sporingen, er det hjem-knappen. Hovedbryteren røres ikke -
-neste gang du åpner appen sporer den igjen, for dette er slutt på denne turen, ikke en
-innstilling.
-
-Bilskjermen beholder sin knapp: der finnes det verken tilbake-knapp eller innstillinger.
-
-**Én tekst, tre flater.** `SpeedWatch` sørget for at flatene *regner* på det samme, men ikke for
-at de *sa* det samme, og de hadde rukket å drive fra hverandre: telefonen kuttet farten med
-`toInt()` mens bilen rundet med `roundToInt()` (79,6 km/t ble 79 på telefonen og 80 i bilen -
-avkorting underrapporterer, feil vei i en app om fartsovertredelser), «Ukjent grense» het «Ukjent
-fartsgrense» i bilen, beløpet ble formatert av to forskjellige rutiner, og telefonen droppet tap
-av førerrett og usikkerhetsmerket helt. `ReadingText` eier nå fart, overskrift, konsekvenser og
-beløpsformat; hver flate beholder bare sin egen layout og palett. `Severity` erstatter tre
-`when`-blokker med hver sin `else`-gren, så et femte utfall ikke lenger blir grått og stumt på
-alle tre uten at noe sier fra.
-
-**Farger i ressursene, og en nattvariant.** Appen hadde ikke noe tema i det hele tatt og arvet
-systemets lyse standard med alle farger hardkodet. To konsekvenser: en helhvit skjerm med et 64sp
-tall i en holder foran frontruta er en lyskaster i kupeen, og gulfargen for «bot uten prikker» lå
-på 2,78:1 mot hvitt - det minst lesbare på skjermen, og den markerte nettopp den tilstanden du
-fortsatt kan gjøre noe med. Paletten ligger nå i `values/colors.xml` med en `values-night/`-variant
-(bilskjermens palett, som allerede er tunet mot mørk bunn), og alle tekstfarger er på minst 4,5:1.
-Bilskjermen bytter tilsvarende på `carContext.isDarkMode` - Android Auto skifter hele hodeenheten
-fra bilens lyssensor, mens Botometer sto svart gjennom både dag og natt.
+- **NAVIGATION-kategorien** er den eneste som gir fri tegneflate (`NavigationTemplate` +
+  `SurfaceCallback`). Play godtar det ikke uten turn-by-turn, derfor Internal App Sharing.
+- **Tre flater.** Bilen kjører én navigasjonsapp om gangen, så Botometer finnes på bilskjermen,
+  på telefonen (når Maps eier bilskjermen) og som heads-up-varsel ved nytt bøtenivå. Alle tre
+  leser fra ett delt `SpeedWatch` og ett `SpeedLimitRepository` i `BotometerApp`, og
+  `ReadingText` eier teksten, så flatene alltid sier det samme.
+- **Posisjon i bakgrunnen.** `LocationForegroundService` eier GPS-abonnementet. Fra Android 14 er
+  «mens appen er i bruk» en forgrunnstillatelse, og telefon-appen er i bakgrunnen mens bilskjermen
+  vises, så `ACCESS_BACKGROUND_LOCATION` trengs i tillegg. «Tillat alltid» finnes bare på
+  innstillingssiden; appen viser en forklaring før den sender brukeren dit.
+- **Sporingen telles, ikke knyttes til skjermer.** `Tracking` holder sporing så lenge noen trenger
+  den: bil-økta, telefonskjermen eller selve bilforbindelsen (`CarConnection`). Ellers ville
+  varslene dødd når Maps tok bilskjermen eller telefonskjermen slukket.
+- **Av betyr av.** Hovedbryteren «Botometer er på» stopper sporing, speedometer, varsler og
+  NVDB-oppslag, sjekket i `Tracking.acquire` og i tjenesten selv. «Avslutt» i bilen og to trykk
+  på tilbake på telefonen stopper turen.
+- **GPS-fart, ikke bilens.** `CAR_SPEED` er utilgjengelig på de fleste hovedenheter, og bilens
+  speedometer viser bevisst for høyt (ECE R39). Skjermen viser faktisk fart og «X km/t over» ut
+  fra den; sikkerhetsfradraget brukes bare til å velge sats.
+- **Fartsgrenser i ruter.** NVDB hentes i ~2×2 km ruter med minnecache, forhåndslasting foran
+  bilen, paginering og backoff med jitter. Matchingen bruker kursfilter om vegens akse, et
+  matchevindu som vokser med GPS-usikkerheten, og demper skiltet når treffet er tvetydig.
+  Motorvegstatus hentes bare i 90-soner og over.
+- **Ingen hopping.** `FineHysteresis` slipper trinn opp med én gang og ned etter 1,5 s, og
+  segmentvalget krever 8 m margin for å bytte. Uten GPS i 5 s sier skjermen fra; etter 20 s
+  vises «--».
+- **Manuell fartsgrense** kan settes på telefonen der NVDB mangler data, og nullstilles når
+  turen er over.
+- **Bøtesatser vedlikeholdes for hånd** i `satser/botesatser.json`. Lovdata-teksten er ikke trygt
+  parsebar, og sikkerhetsfradraget er påtalepraksis. Appen henter nyeste versjon fra repoet, med
+  APK-asseten som fallback, og flagger satser eldre enn 400 dager. `.github/workflows/satser.yml`
+  feiler ukentlig hvis en rettskilde er endret. Ved satsendring: oppdater JSON-filen,
+  `FineCalculatorTest` og `sistEndret` i `satser/kilder.json`.
+- **Varsler i bilen** krever `CarAppExtender` og viktighet HIGH, og skal ikke ha
+  `CATEGORY_NAVIGATION` (verten undertrykker dem da). «Send testvarsel» poster samme varsel på
+  kommando.
+- **Diagnostikk og krasjlogg** vises bare på telefonen og kan kopieres med «Kopier diagnostikk».
+- **Bilskjermen er bevisst kjedelig:** tre linjer, stor skrift, ingen animasjon, dag- og
+  nattpalett. Fargen viser konsekvensen (grønn → gul bot → oransje prikker → rød anmeldelse).
 
 ## Datakilder
 
 | Data | Kilde | Lisens |
 |---|---|---|
-| Fartsgrenser | NVDB API LES v4, vegobjekttype 105, egenskap 2021 | NLOD 2.0 |
-| Motorvegstatus | NVDB API LES v4, vegobjekttype 595, egenskap 5378 | NLOD 2.0 |
-| Bøtesatser | Forskrift om forenklet forelegg (Lovdata, NLOD 2.0), manuelt vedlikeholdt, endringsvarsel i CI | — |
-| Prikker / tap av førerrett | Prikkforskriften, tapsforskriften | — |
+| Fartsgrenser | NVDB API LES v4, vegobjekttype 105 | NLOD 2.0 |
+| Motorvegstatus | NVDB API LES v4, vegobjekttype 595 | NLOD 2.0 |
+| Bøtesatser | Forskrift om forenklet forelegg (Lovdata) | NLOD 2.0 |
+| Prikker / tap av førerrett | Prikkforskriften, tapsforskriften | NLOD 2.0 |
 
-NVDB-kallet:
-
-```
-GET https://nvdbapiles.atlas.vegvesen.no/vegobjekter/api/v4/vegobjekter/105
-  ?kartutsnitt={vest},{sør},{øst},{nord}
-  &srid=4326
-  &inkluder=egenskaper,geometri,lokasjon
-  &segmentering=true
-  &inkluderAntall=false
-X-Client: botometer-android
-```
-
-Samme kall med `595` i stedet for `105` gir motorvegstrekningene. Det hentes **bare når den
-matchede fartsgrensen er 90 km/t eller høyere**, siden det er den eneste satsen som skiller på
-vegtype - en 50-sone koster altså fortsatt ett kall per rute, ikke to.
-
-Åpent, ingen nøkkel, men `X-Client` er påkrevd av Vegvesenet - uten den risikerer du struping.
-Sett din egen verdi i `res/values/strings.xml`.
-
-**v4 avviser ukjente parametre** med `400 Ugyldig forespørsel` i stedet for å ignorere dem. Kallet
-bar lenge med seg `sortering=false` fra v3, og da feilet hvert eneste oppslag - permanent, siden
-en 400 med rette ikke prøves på nytt. Slå opp nye parametre i v4-dokumentasjonen før du legger dem
-til; `NvdbClientErrorTest` låser settet så en utvidelse må gjøres bevisst.
-
-## Arkitektur
-
-```
-LocationForegroundService ─→ GpsSpeedSource ─→ SpeedFeed (StateFlow) ─┐
-                                            + 1 Hz puls ─────────────┤
-                                                                      ↓
-                                                                  SpeedWatch ─→ Reading
-SpeedLimitRepository ──LimitMatch─────────────────────────────────────┘   │      ├─→ SpeedometerRenderer (bilskjerm)
-    ├── NvdbClient (OkHttp, paginert, typede feil)                        │      ├─→ MainActivity (telefon)
-    ├── LruCache<Tile, List<Segment>>        (fartsgrenser)               │      └─→ SpeedingAlerts
-    ├── LruCache<Tile, List<Motorveg>>       (bare i 90-soner)            │
-    └── HashMap<Tile+lag, Failure>           (negativ cache + backoff)    └─→ FineCalculator ─→ FineHysteresis
-```
-
-**Hvorfor ett `SpeedWatch` og ikke tre regnestykker:** de tre flatene viste tidligere hver sin
-utregning av det samme. Da kan appen varsle om en bot den ikke viser, og en regel som legges inn
-ett sted - GPS-friskhet, manuell fartsgrense, hysterese - gjelder bare den ene flaten. Nå går
-fart, fartsgrense og bot gjennom én `Reading`, og flatene tegner den.
-
-**Og det holdt ikke å dele klassen - de måtte dele EKSEMPLARET.** Lenge gjorde de ikke det:
-`MainActivity`, `SpeedometerScreen` og `LocationForegroundService` konstruerte hver sitt
-`SpeedWatch`, og med det hver sin `FineHysteresis`, sin egen `lastMatch` og sitt eget
-øyeblikksbilde av satsfila. Tre kopier av «ett regnestykke» driver fra hverandre, og gjorde det:
-
-- **«Oppdater satser» nådde aldri fartsvarslene.** Tjenesten lager sitt eksemplar én gang
-  (`if (alertJob == null)`) og beholdt tabellen slik den var da turen begynte. Appen kunne varsle
-  om et beløp den ikke viste noe sted - nøyaktig det denne delingen finnes for å hindre.
-- **Tre hystereser i utakt.** Hver med sitt eget 1,5-sekunders holdevindu og sin egen puls, startet
-  når nettopp den flaten begynte å samle inn. Under en nedbremsing kunne varselet og de to
-  skjermene vise hvert sitt beløp samtidig.
-- **Samme posisjon kart-matchet seks ganger i sekundet.** Fix og puls, ganger tre flater, mot de
-  samme rutene - og `Diagnostics.matched` viste hvilken flate som skrev sist, ikke «treffet».
-  Telefonens andel av det gikk dessuten på hovedtråden, siden den samlet inn i `lifecycleScope`.
-
-`BotometerApp` eier nå eksemplaret, og strømmen deles med `shareIn(WhileSubscribed, replay = 1)`
-på `Dispatchers.Default`. Innsamlerne tegner fortsatt på sin egen tråd; det er regnestykket som
-har flyttet av veien. `SpeedWatch.reloadRates()` er veien inn for nye satser, og
-`SharedSpeedWatchTest` låser at den virker - en fil alene er ikke nok, det er kallet som er
-koblingen.
-
-**Hvorfor tile-cache og ikke ett kall per posisjon:** NVDB-kall tar hundrevis av millisekunder, og
-mobildekning i norske dalfører og tunneler er upålitelig. Repoet laster ~2×2 km ruter, cacher dem i
-minnet, og forhåndslaster ruta ~60 sekunder foran bilen ut fra kurs og fart. Faller nettet ut,
-vises siste sikre treff dempet (`stale`) i stedet for «ukjent».
-
-**Hvorfor en puls, og ikke bare GPS-fix:** `SpeedFeed` er en `StateFlow`, og en StateFlow
-emitterer bare når verdien endrer seg. Forsvant GPS-en i en tunnel, sluttet fixene å komme - og
-skjermen ble stående med den siste farten og det siste bøtebeløpet, uendret, uten et eneste tegn
-på at tallet var dødt. Det så ut som en app som virket, og det er den farligste feilen appen kan
-gjøre.
-
-`SpeedWatch` slår derfor sammen fixene med en puls på 1 Hz, og hvert `SpeedFix` bærer sitt eget
-`elapsedRealtime`. [`FixFreshness`](app/src/main/java/no/synth/botometer/speed/FixFreshness.kt)
-oversetter alderen: over 5 sekunder er signalet borte (skjermen sier fra), over 20 sekunder er
-farten satt til 0 og vises som «--», mens fartsgrensen beholdes - den gjelder fortsatt inne i
-tunnelen. Monoton klokke og ikke veggklokke, ellers ville et tidshopp bakover gjort et gammelt
-fix ferskt igjen.
-
-**Hvorfor GPS-nøyaktigheten brukes til noe:** `accuracyMeters` var lest fra hvert fix og aldri
-brukt. Et fix på ±25 m kan ligge 25 m fra vegen det faktisk er på, og med et fast matchevindu på
-30 m ble det bom - som vises som forrige treff eller «ukjent», ikke som «GPS-en er dårlig her».
-Vinduet vokser nå med usikkerheten (30 m + nøyaktighet, maks 60 m), nøyaktigheten setter et tak på
-hvor sikkert et treff kan bli, og over ±50 m hoppes matchingen helt over: å velge mellom vegene i
-et kryss ut fra en posisjon som kan være femti meter feil er å trekke lodd.
-
-Farten røres ikke av dette. Fart fra GNSS er dopplermålt og god også når posisjonen er upresis, så
-å dempe den ut fra `accuracy` ville skjult en ekte bot. Det som mangler fart - `hasSpeed()` er
-false, typisk en nettverksposisjon - er derimot merket, i stedet for å bli lest som stillstand.
-
-**Hvorfor kart-matching med kursfilter:** nærmeste linjestykke alene plukker lett en parallell
-lokalveg eller en avkjøringsrampe med annen fartsgrense. `SpeedLimitRepository` avviser segmenter
-som avviker mer enn 45° fra GPS-kursen (og dropper filteret under 8 km/t, der kursen fra GPS er
-støy).
-
-Avviket måles om **aksen**, ikke om retningen: `Geo.axisDelta`, ikke `Geo.headingDelta`. En veg er
-en linje, ikke en pil, og hvilken vei NVDB har digitalisert den har ingenting med kjøreretningen
-din å gjøre. Med retningsavvik ble EV18 forkastet med Δ173° fem meter unna, mens en kommunal veg
-femten meter unna vant med Δ27° - appen viste 40 der det var 50. `HeadingFilterTest` gjenskaper
-nøyaktig det oppsettet.
-
-**Hvorfor negativ cache:** `ensureTile` hoppet tidligere bare av hvis ruta var cachet eller
-underveis. Feilet kallet, var den ingen av dem - og neste GPS-fix prøvde igjen. I en tunnel med
-1 Hz ble det 60 forespørsler i minuttet mot et offentlig API. Nå får hver rute eksponentiell
-backoff med jitter (2 s → 5 min), og `NvdbException.retryable` skiller transiente feil fra 400-er
-som aldri blir bedre. Jitteren hindrer at alle ruter som feilet i samme tunnel prøver igjen i
-samme sekund når dekningen kommer tilbake.
-
-**Hvorfor paginering:** `metadata.neste.start` følges til den er tom. Uten det mistet vi
-fartsgrenser stille i tette byruter, nettopp der de varierer mest. Vi bygger URL-en selv i stedet
-for å følge `neste.href`, siden href-en historisk har pekt på gamle stier uten `/api/v4/`. Treffer
-vi sidegrensen, settes `TileData.complete = false` og det logges - ufullstendige data skal ikke se
-ut som «her finnes det ingen fartsgrense».
-
-**Hvorfor sikkerhetsfradrag:** politiet trekker fra i målt fart før overtredelsen fastsettes —
-i praksis 3 km/t opp til 100 km/t, 3 % over. Uten det ville appen systematisk overdrive boten i
-grenseland. Fradraget ligger i `Tolerance` i satsfilen, ikke i koden.
-
-**Men fradraget hører ikke hjemme på skjermen.** «X km/t over» ble lenge skrevet ut fra
-`FineEstimate.overKmt`, altså BØTEGRUNNLAGET: 84 i en 80-sone ga grunnlag 81, og appen skrev
-«1 km/t over». Det er riktig svar på hvilken sats som gjelder, og feil svar på det spørsmålet
-skjermen faktisk blir stilt — du kjører 4 km/t for fort. Fradraget er en juridisk gunst, ikke en
-beskrivelse av farten din, og et speedometer som legger den inn i tallet forteller føreren at han
-ligger nærmere grensen enn han gjør.
-
-`ReadingText.overKmt` regner derfor fra fart og fartsgrense, ikke fra grunnlaget — og fra den
-VISTE farten, så tallene på skjermen går opp: står det «84 km/t · grense 80», står det «4 km/t
-over». Grunnlaget lever videre der det hører hjemme, i oppslaget som velger satsen.
-
-**Hvorfor hysterese, og hvorfor den er usymmetrisk:** GPS-farten vaker et par tideler. Ligger du
-på nøyaktig 16 km/t over, hoppet trinnet mellom 15 og 16 flere ganger i sekundet - og beløpet
-mellom 5 950 og 8 650 kroner. To steder trengte demping, og de trenger hver sin:
-
-- **Trinnet** (`FineHysteresis`): oppover slipper alltid gjennom med én gang, nedover må ha holdt
-  seg i 1,5 sekunder. Et beløp som er for lavt lyver om konsekvensen; et som er for høyt er bare
-  gammelt. Og siden bare den ene retningen venter, kan trinnet ikke vippe fram og tilbake. Bytter
-  fartsgrensen, nullstilles alt - å holde igjen et trinn fra en sone du nettopp forlot ville vist
-  en bot for en fartsgrense som ikke gjelder.
-- **Segmentet** (`SpeedLimitRepository.stabilize`): i et kryss ligger to segmenter med ulik grense
-  nesten like nær, og vinneren skifter fra fix til fix. Den nye grensen må vinne 8 meter over den
-  vi allerede viser - samme margin som skiller et utvetydig treff fra et tvetydig et. Ved et ekte
-  soneskifte holder det ikke igjen: segmentet du forlot slutter ved skiltet, så avstanden til det
-  vokser med farten din.
-
-**Hvorfor tillit (`MatchConfidence`):** vinneren alene sier ikke om den vant klart. Ligger to
-segmenter med ulik fartsgrense like nær, er treffet et myntkast - og et myntkast skal ikke se ut
-som et faktum på en bilskjerm. Tilliten kommer av avstanden, avstanden opp til nærmeste kandidat
-med en *annen* grense, og GPS-nøyaktigheten, og et lavt tall demper skiltet på skjermen.
-
-**Hvorfor det ikke varsles om sonen som kommer:** det ble prøvd, og det var feil hele tiden.
-Matchingen ble kjørt en gang til på et punkt ~8 sekunder fram, ekstrapolert i rett linje fra
-kursen, og alt innenfor 30 meter av det punktet var en kandidat. Ingenting sjekket at treffet lå
-på *samme veg*. I et tettsted er 30-sonene nettopp sidegatene, så punktet fant en av dem hver
-gang bilen nærmet seg et kryss - og «snart 30 km/t» sto på skjermen på en 80-veg.
-
-Feilen er den samme som fantomlinjene mellom delstrekninger, i ny drakt: uten en sjekk på at
-kandidaten hører til vegen du faktisk kjører på, vinner de lave grensene systematisk, fordi det
-er de tette som ligger overalt. Et varsel som er feil på en bilskjerm er verre enn ingen varsel,
-og det slutter uansett å bli lest.
-
-Skal det gjøres på ordentlig, må det følge vegen framover - videre langs geometrien til segmentet
-du er matchet mot, eller gjennom veglenke-topologien i NVDB - ikke et punkt i luften. Det er en
-større jobb enn den ser ut som, og til den er gjort er dette bevisst ute.
-
-**Hvorfor manuell fartsgrense:** NVDB dekker ikke alt. På private veger, ny veg og strekninger
-der fartsgrenseobjektet mangler viste appen «Ukjent fartsgrense» og sluttet å regne - altså
-ingenting, akkurat der du helst vil vite. `ManualLimit` lar brukeren sette en grense selv, og den
-gjelder alle tre flatene, ellers ville varslene regnet på noe annet enn skjermen. Bare telefonen
-kan *sette* den: en rad med knapper på bilskjermen er en invitasjon til å fikle under kjøring.
-Den nullstilles når posisjonssporingen stopper, så en manuell grense aldri overlever til neste
-tur uten at du vet om det.
+NVDB krever `X-Client`-header; sett din egen i `res/values/strings.xml`. v4 avviser ukjente
+parametre med 400, og `NvdbClientErrorTest` låser parametersettet.
 
 ## Kjente svakheter
 
-Etter review-runden står følgende igjen som uløst. Det viktigste først:
+- Motorvegoppslaget antar et enum-format i NVDB som ikke er verifisert mot det ekte API-et.
+- Ingen høyde i matchingen: bru og veg under matcher mot hverandre.
+- Farge er eneste koding av alvorlighetsgrad.
+- Prikker og førerrett er fra sekundærkilder, per hendelse, uten prøveperiode-regelen.
+- Variable og midlertidige fartsgrenser finnes ikke i NVDB.
+- Ruter lagres ikke over omstart.
+- Backoff og negativ cache i `SpeedLimitRepository` er utestet.
+- Svalbard forkastes av WKT-sjekken (breddegrad 57-72).
+- Beløpene er anslag.
 
-- **«Tillat alltid» må settes for hånd.** Fra Android 11 finnes ikke valget i
-  tillatelsesdialogen, bare på appens innstillingsside, så appen kan bare sende brukeren dit.
-  Er den ikke satt, får bilskjermen ingen fart - telefon-appen skiller mellom «gitt» og «gitt i
-  forgrunnen» og sier fra.
-- **Fantomlinjer mellom delstrekninger er rettet**, men beslektede feil er lette å lage igjen:
-  et vegobjekt med MULTILINESTRING-geometri er flere adskilte strekninger, og limes de sammen til
-  én punktliste, får matchingen en rett linje mellom dem som ikke finnes i virkeligheten. Effekten
-  var systematisk - 30-soner i tettsteder er mange korte strekninger, 80-veger er én lang - så
-  fantomlinjene spente over hovedvegen og lot lav grense vinne. `MultiLineSegmentTest` holder det
-  ute. Diagnostikken viser nå også kandidatene matchingen forkastet, ikke bare vinneren.
-- **Motorvegoppslaget hviler på en antakelse om NVDB-formatet.** Vegobjekttype 595 og egenskap
-  5378 er slått opp i datakatalogen, men hvordan enum-verdien kommer tilbake - `enum_id` 7355/7356,
-  teksten «Motorveg»/«Motortrafikkveg», eller begge - er ikke verifisert mot det ekte API-et.
-  Parsingen godtar derfor begge former og ekskluderer bare det som *eksplisitt* er
-  motortrafikkveg; typen HETER Motorveg, så «objekt av denne typen er motorveg» er det som
-  fortsatt stemmer om kodingen endrer seg. Diagnostikken viser antall motorvegsegmenter per rute:
-  står den på 0 der du vet du kjørte motorveg, er antakelsen gal. `MotorwayLookupTest` låser
-  begge formene.
-- **Ingen høydeinformasjon i matchingen.** Bru over veg og tunnel under veg matcher mot hverandre.
-  NVDB leverer Z i WKT-en; `Wkt.parsePoint` kaster den i dag.
-- **Farge er eneste koding** av alvorlighetsgrad, som utelukker rød-grønn fargeblindhet.
-- **Prikker og tap av førerrett** er hentet fra sekundærkilder, ikke fra prikkforskriften og
-  tapsforskriften direkte. Prikkmodellen er dessuten per hendelse, ikke kumulativ, og mangler
-  doblingsregelen for førerkort i prøveperioden.
-- **«X km/t til første bot»** optimaliserer mot bøtegrensen, ikke mot bremselengde. Vurder å bytte
-  linjen mot stopplengde ved gjeldende fart.
-- **Backoff-logikken i `SpeedLimitRepository` er fortsatt utestet.** Matchingen har tester nå
-  (`SpeedLimitMatchingTest`, `MotorwayLookupTest`) - `NvdbClient.baseUrl` peker på en lokal
-  server - men `now`-parameteren er ikke tatt i bruk av noen test, så backoff og negativ cache
-  er bare lest, ikke kjørt.
-- **Wkt-sanity-sjekken bruker breddegrad 57-72**, så Svalbard forkastes stille.
+## Personvern og lisens
 
-### Datakvalitet
-
-- **Variable fartsgrenser** (tunneler, motorvei med skiltstyring) ligger ikke i NVDB som gjeldende
-  verdi. Appen viser den skiltede statiske grensen og tar feil der.
-- **Midlertidig skilting** ved veiarbeid finnes ikke i NVDB i sanntid.
-- **Motorveg-flagget** slås nå opp (vegobjekttype 595), men bare i 90-soner og over, og bare når
-  ruta rekker å bli lastet. Rekker den ikke det, er svaret fortsatt «vet ikke», og satsen for
-  36–40 km/t over markeres som «usikker» slik den alltid har blitt. En manuelt satt fartsgrense
-  sier heller ingenting om vegtype, og gir samme usikkerhet.
-- **Ingen persistering av tiles** over app-restart. Room eller en enkel fil-cache er neste steg om
-  du vil ha det til å fungere offline i kjente områder.
-- Beløpene er **anslag**. Politiet kan velge vanlig forelegg også i lavere sjikt, og gjentakelse
-  påvirker prikker og førerrett.
-
-## Bygg og installer
-
-Testene krever **JDK 21 eller nyere**. Robolectric kjører dem mot `targetSdk`, og nekter SDK 36
-på en eldre JDK. Bytekoden appen bygges til er fortsatt 17.
-
-```bash
-./gradlew :app:test              # satstabellen verifiseres
-./gradlew :app:assembleRelease   # → app/build/outputs/apk/release/
-./gradlew :app:bundleRelease     # → app/build/outputs/bundle/release/  (AAB, til Play)
-adb install -r app/build/outputs/apk/release/botometer-*-release.apk   # nok for DHU, ikke bil
-```
-
-Filnavnene bærer kortshaen - `botometer-<kortsha>-release.apk` - av samme grunn som versionName
-gjør det: en fil i nedlastingsmappa må kunne si hvilken commit den er uten at du installerer den
-først.
-
-Bruk `assembleRelease`, ikke `installDebug`: debug-bygg har `ALLOW_ALL_CAR_HOSTS = true`.
-
-**Vil du ikke bygge selv:** `.github/workflows/apk.yml` bygger og tester på hver push, og
-legger APK-en ved kjøringen som artefakt.
-
-**For DHU** holder det å installere APK-en rett på telefonen. **For en ekte bil må den inn via
-Play** - Internal App Sharing er nok, se «Hvordan appen faktisk kommer inn i bilen». En APK lagt
-inn med `adb install` eller en filbehandler vises ikke i bilen, og du får ingen feilmelding som
-sier hvorfor.
-
-DHU gir ingen GPS-fart - bruk `adb emu geo fix` mot emulator, eller mock provider, for å teste
-matchingen uten å kjøre bil.
-
-### Dukker ikke appen opp i app-oversikten i bilen?
-
-Åpne telefon-appen. Den øverste seksjonen kjører de samme spørringene mot PackageManager som
-verten selv gjør, og leser dem fra den **installerte** APK-en. Teksten er selectable, så den kan
-limes rett inn i en issue.
-
-Rekkefølgen på sjekkene er svarene sortert etter hvor ofte de er årsaken:
-
-1. **`✗ INSTALLERT UTENFOR PLAY`** - dette er nesten alltid det. «Ukjente kilder» gjelder ikke
-   Car App Library-apper, og ingenting i manifestet kan rette på det. Legg den inn via Internal
-   App Sharing.
-2. **`✗ MANGLER: android:label` / `android:icon`** - attributtene må stå på `<service>`-en, ikke
-   bare på `<application>`. Verten arver dem ikke, og uten dem har den ingenting å tegne en
-   oppføring med. `CarAppManifestTest` skal fange dette før det rekker ut i en APK.
-3. **`✗ CarAppService: IKKE synlig`** - manifestet eller R8. Linja under sier om klassen fortsatt
-   finnes i APK-en.
-4. **Alt `✓` og appen mangler likevel** - da er det verten, og bare vertsloggen sier hvorfor:
-
-```bash
-./tools/bil-diagnostikk.sh    # samme sjekker med adb, og til slutt vertsloggen
-```
-
-Gearhead logger hvorfor den forkaster en app - feil kategori, for høy `minCarApiLevel`, feilet
-vertsvalidering. **Den loggen er svaret; den slår enhver hypotese i dette dokumentet.**
-
-## Tre flater, og hvorfor det ikke er én
-
-Bilverten kjører **én navigasjonsapp om gangen**. Starter Google Maps, kaller verten
-`onStopNavigation` på oss. Car App Library har heller ingen liten sideflate å be om -
-`NavigationTemplate` er fullskjerm, og panelet ved siden av Maps er vertens eget, forbeholdt
-media og meldinger. Botometer kan altså eie bilskjermen, eller Maps kan. Ikke begge.
-
-Derfor finnes appen på tre flater i stedet:
-
-| Flate | Når | Hva den gir |
-|---|---|---|
-| **Bilskjermen** | Botometer er valgt i bilen | Speedometeret, tegnet på `NavigationTemplate` |
-| **Telefonen** | Maps eier bilskjermen | `MainActivity`: samme tall, stor skrift, skjermen holdes våken |
-| **Varsel** | Alltid, så lenge telefonen er koblet til bilen | Heads-up når farten krysser inn i et nytt bøtenivå |
-
-**Bilskjermen har en «Avslutt»-knapp, og den betyr slutt.** Den kalte lenge `Screen.finish()`,
-som er en stille no-op her: `ScreenManager.remove` sier det rett ut - «If this screen is the only
-Screen in the stack, it will not be removed» - og denne skjermen ER den eneste, siden økta
-returnerer den fra `onCreateScreen` og vi aldri pusher noe over den. Knappen stoppet altså
-sporingen og lot skjermen stå igjen med siste frame, uten vei ut. Nå er det
-`carContext.finishCarApp()`.
- Den stopper posisjonssporingen, ikke
-bare visningen: foreground-servicen legger seg ned og det vedvarende varselet forsvinner. Uten den
-var eneste vei ut av bilskjermen å starte en annen navigasjonsapp - og da lever servicen videre,
-appen leser posisjon, og varselet står, uten at noe på skjermen forklarer hvorfor. En app som
-leser GPS må kunne skrus av der den vises.
-
-Telefonen gjør det samme med **to trykk på tilbake**, og hovedbryteren «Botometer er på» slår av
-alt sammen mer varig. Avsluttes det fra telefonen mens bilskjermen står på, bytter bilskjermen
-til «Stoppet» med en «Start på nytt»-knapp - et frosset speedometer ville vist en fart bilen
-ikke har.
-
-`LocationForegroundService` eier GPS-abonnementet og lever videre når Maps overtar skjermen, så
-varslene virker uansett hvem som eier bilskjermen. Varselet er `IMPORTANCE_HIGH` og utvidet med
-`CarAppExtender` - uten den vises ingen varsler på bilskjermen i det hele tatt.
-
-**Og det skal IKKE ha `CATEGORY_NAVIGATION`.** Det hadde det, og det var grunnen til at varselet
-kom opp på telefonen hver gang og aldri i bilen. Verten behandler et navigasjonsvarsel fra en
-navigasjonsapp som en sving-for-sving-melding, og de har sin egen regel ([`CarAppExtender`,
-avsnittet «Navigation»](https://developer.android.com/reference/androidx/car/app/notification/CarAppExtender)):
-
-> The notification will not be displayed if the navigation app is not the currently active
-> navigation app, or if the app is already displaying routing information in the navigation
-> template.
-
-Botometer er alltid i én av de to tilstandene. Eier Maps skjermen, er vi ikke den aktive
-navigasjonsappen. Eier vi skjermen, tegner vi i `NavigationTemplate`. Begge grenene undertrykker
-varselet, så det kunne aldri vises - mens telefonen viste det hver gang, siden regelen er vertens
-og ikke systemets. Kategorien så «bil-riktig» ut og var det motsatte: det er `CarAppExtender` som
-gjør et varsel synlig i bilen, ikke kategorien.
-
-Varselet postes med `CarNotificationManager.notify`, ikke `NotificationManagerCompat.notify`.
-Dokumentasjonen sier det rett ut. På projisert Android Auto gjør de to i praksis det samme når
-varselet allerede er utvidet, så det alene var ikke feilen - men på Automotive OS er det det som
-gjør at varselet havner riktig.
-
-**«Send testvarsel»** i telefon-appen poster nøyaktig det samme varselet på kommando. Uten den
-krevde hver runde med feilsøking av bilvarslene at noen kjørte for fort med bilen tilkoblet og så
-husket hva som skjedde - tre runder på den måten er tre kjøreturer.
-
-**Det sto her lenge før det var sant.** Sporingen fulgte skjermene: `SpeedometerScreen.onStop`
-stoppet tjenesten, og verten stopper skjermen vår i det en annen navigasjonsapp tar over
-bilskjermen. GPS-en døde altså - og med den fartsvarslene - i nøyaktig det øyeblikket varselet
-ble den eneste flaten appen hadde igjen. Den ene tingen de tre flatene finnes for, virket ikke.
-
-Nå teller `Tracking` hvem som vil ha sporing, og bilen holder på den så lenge **økta** lever, ikke
-så lenge skjermen vår vises. Økta destrueres når appen avsluttes i bilen eller telefonen kobles
-fra; det er der turen er over. Telefonen holder på sporingen mens speedometeret er synlig, som
-før, så tilbake-knappen der fortsatt slår av GPS-en når telefonen er den eneste flaten i bruk -
-men den slår den ikke lenger av for bilen. Hovedbryteren står over hele tellingen: er den av,
-slipper `Tracking.acquire` ingen holder inn i det hele tatt.
-
-**En holder er en hensikt, ikke en kvittering.** Fra Android 12 er det forbudt å starte en
-forgrunnstjeneste fra bakgrunnen, og CONNECTION-holderen tas nettopp når telefonen kobles til
-bilen - som godt kan skje mens appen ligger bak. Et forsøk på å være presis - «ikke tell en
-holder for en tjeneste som aldri startet» - kostet dyrt:
-
-1. Bilen kobler til i bakgrunnen → CONNECTION nektes → ingen holder registrert
-2. Du åpner telefon-appen → PHONE i forgrunnen → starten går → `{PHONE}`
-3. Telefonskjermen slukker → PHONE slippes, siste holder → tjenesten stoppes
-
-Fartsvarslene døde altså i det telefonskjermen gikk i svart, med bilen tilkoblet - det ene
-tilfellet CONNECTION-holderen finnes for. Holderens jobb er å NEKTE en slik stopp, ikke å starte
-tjenesten, og å binde den til en start som avslås nøyaktig når den trengs var å fjerne den igjen.
-Holderen registreres nå uansett; starten er et eget, gjentatt forsøk, og neste holder som kommer
-i forgrunnen reparerer en start som ble nektet før. `Diagnostics` skriver hvilken av delene som
-skjedde, og `TrackingKillSwitchTest` låser hele kjeden.
-
-Og fordi `CarConnection` bare leverer ved ENDRING, må holderen kunne tas på nytt: ble den avvist
-mens hovedbryteren var av, eller ryddet «Avslutt» den bort, kom det ingen ny hendelse før
-telefonen fysisk ble koblet fra og til igjen. `BotometerApp.applyCarConnectionHolder()` er veien
-tilbake, og telefon-appen kaller den når bryteren slås på.
-
-**Og å telle skjermer var bare halve svaret.** Begge holderne var fortsatt skjermer, og skjermer
-slukker. Kjører du med Maps på bilskjermen uten å ha åpnet Botometer i bilen den turen, finnes
-det ingen bil-økt - og da er telefonskjermen alene om å holde. Den går i svart av seg selv mens
-telefonen projiserer, `MainActivity.onStop` slipper, tellingen blir tom, og varslene dør i
-nøyaktig det øyeblikket de er det eneste appen har igjen. Samme feil som før, én flate lenger ut.
-
-Derfor holder også selve **bilforbindelsen** på sporingen: `BotometerApp` observerer
-`CarConnection` med `observeForever` og tar holderen `CONNECTION` så lenge telefonen er koblet
-til bilen, uansett hva som vises hvor. `observeForever` og ikke en livssyklus, for en observatør
-bundet til en aktivitet slutter å se i samme øyeblikk som problemet oppstår.
-
-Det forutsetter at prosessen er i live når du kobler til. Er appen helt død, starter ingenting av
-seg selv - Android Auto vekker oss først når Botometer åpnes i bilen. Åpne telefon-appen én gang
-i begynnelsen av turen, eller Botometer på bilskjermen, så holder forbindelsen resten.
-
-`Diagnostics.trackingLines()` skriver hvem som holder nå og de siste endringene, med klokkeslett.
-Spørsmålet er alltid «hvorfor sluttet den», og det svaret er borte i det tilstanden bare er
-«stoppet». `TrackingHolders` er tellingen alene, uten Android
-rundt seg, og `TrackingHoldersTest` låser den.
-
-**Dukker varselet opp på telefonen, men ikke i bilen,** er det en helt annen feil - da er
-varselet postet og ikke blokkert, og appen har gjort jobben sin. Det som gjenstår er tingene
-bilverten ser på og telefonen ikke gjør, og ingen av dem sier fra når de er årsaken.
-`CarNotificationDiagnostics` leser dem ut i seksjonen «FARTSVARSLER I BILEN» i telefon-appen:
-
-- **Kanalens faktiske viktighet.** Den viktigste, og den mest bedragerske: viktighet kan bare
-  SENKES av en app, aldri heves. Er kanalen `speeding` først opprettet lavere - eller senket av
-  brukeren, eller av systemet fordi varslene ble avvist ofte nok - hjelper det ingenting at
-  `createChannel` ber om `IMPORTANCE_HIGH`. Forespørselen ignoreres. Under HIGH blir det ingen
-  heads-up, verten viser ingenting, og telefonen viser varselet i skyggen likevel, så det ser ut
-  som om alt virker.
-- **Bilforbindelsen**, lest med `CarConnection`. Det krever en `<provider>`-oppføring under
-  `<queries>` i manifestet; uten den er provideren usynlig fra Android 11 og `CarConnection`
-  svarer «ikke tilkoblet» ALLTID - en diagnostikk som lyver i akkurat den retningen som betyr noe.
-- **Om bil-økta var i live da varselet ble postet.** Verten viser bare varsler for en app som
-  faktisk kjører i bilen. Ble varselet postet uten en økt, er det hele forklaringen.
-- **Om posteringen feilet.** Den lå i `runCatching` og forsvant i stillhet; en feil ingen ser er
-  verre enn en feil, for da leter du alle andre steder enn der den er.
-
-Knappen **«Kopier diagnostikk»** legger hele rapporten på utklippstavla. Teksten har alltid vært
-selectable, men å markere fem skjermhøyder med diagnostikk på en telefon er en øvelse ingen orker
-å gjøre riktig.
-
-**Varselet kommer bare ved overgang til et nytt nivå.** Et varsel per GPS-fix er ikke et varsel,
-det er støy, og Google er tydelig på at heads-up er forbeholdt noe «drive-critical, time
-sensitive, and actionable». At beløpet nettopp gikk fra 4 800 til 7 450 kroner er det. At du
-fortsatt ligger 17 over er det ikke. `FineHysteresis` demper vippingen på selve trinngrensa, og
-`AlertPolicy` legger et minste intervall mellom varsler oppå det.
-
-De tre flatene deler ett `SpeedLimitRepository`, opprettet i `BotometerApp`. Rute-cachen ligger i
-instansen, så tre repoer ville betydd tre cacher og tre ganger så mange kall mot NVDB for de
-samme rutene. Selve regnestykket deles på samme måte: ett `SpeedWatch`, eid av
-`BotometerApp`, med `readings` som en delt strøm. «Oppdater satser» kaller `reloadRates()` på
-det ene eksemplaret og slår dermed gjennom på alle tre flatene uten omstart av prosessen.
-
-## Personvern
-
-Posisjonen forlater aldri telefonen: NVDB-kallet sender en bbox på ~2 km, ikke et punkt. Det er en
-reell designstyrke og bør ikke ofres for finere matching. `X-Client` er satt til `botometer-android`
-uten versjon og personnavn, siden verdien havner i Vegvesenets logger.
-
-Foreground-servicen viser et vedvarende varsel så lenge posisjon leses. Det er derfor
-`POST_NOTIFICATIONS` etterspørres på API 33+ - servicen kjører uansett, men et skjult varsel er
-dårlig gjennomsiktighet.
-
-## Sikkerhet på skjermen
-
-Renderingen er bevisst kjedelig: tre linjer, stor skrift, ingen animasjon, ingen interaksjon.
-Fargen bæres av konsekvensen (grønn ingen bot → gul bot → oransje prikker → rød anmeldelse), slik
-at informasjonen leses i periferien uten at blikket forlater veien.
+Se [PRIVACY.md](PRIVACY.md). Lisensiert under [Mozilla Public License 2.0](LICENSE).
