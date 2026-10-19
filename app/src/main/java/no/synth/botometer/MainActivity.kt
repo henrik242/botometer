@@ -1,6 +1,7 @@
 package no.synth.botometer
 
 import android.Manifest
+import android.app.AlertDialog
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Intent
@@ -207,7 +208,7 @@ class MainActivity : ComponentActivity() {
         }
         fixBackground = Button(this).apply {
             text = getString(R.string.always_allow_location)
-            setOnClickListener { openAppSettings() }
+            setOnClickListener { showBackgroundDisclosure() }
         }
         clearCrash = Button(this).apply {
             text = getString(R.string.clear_crash_log)
@@ -800,6 +801,20 @@ class MainActivity : ComponentActivity() {
             }
             render()
         }
+    }
+
+    /**
+     * Play krever en tydelig forklaring i appen før brukeren sendes til «Tillat alltid», og at
+     * den sier hva posisjonen brukes til når appen ikke er i bruk. Innstillingssiden alene sier
+     * ingenting om det.
+     */
+    private fun showBackgroundDisclosure() {
+        AlertDialog.Builder(this)
+            .setTitle(R.string.background_disclosure_title)
+            .setMessage(R.string.background_disclosure_text)
+            .setPositiveButton(R.string.background_disclosure_continue) { _, _ -> openAppSettings() }
+            .setNegativeButton(R.string.background_disclosure_cancel, null)
+            .show()
     }
 
     /**

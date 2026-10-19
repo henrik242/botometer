@@ -51,6 +51,10 @@
     <string name="setting_enabled">Botometer er på</string>
     <string name="setting_enabled_help">Av: alt stopper — posisjonssporingen, speedometeret her og i bilen, fartsvarslene og oppslagene mot Vegvesenets fartsgrensedata. Appen leser ingenting og bruker ingen data før du slår den på igjen.</string>
     <string name="always_allow_location">Posisjon: tillat alltid</string>
+    <string name="background_disclosure_title">Posisjon når appen ikke er i bruk</string>
+    <string name="background_disclosure_text">Botometer samler inn posisjonsdata for å vise fart, fartsgrense og bøtenivå på bilskjermen i Android Auto, også når appen er lukket eller ikke i bruk på telefonen.\n\nPosisjonen brukes bare på telefonen og lagres ikke. For å hente fartsgrenser sendes et område på noen kilometer til Statens vegvesen, aldri det nøyaktige punktet.\n\nPå neste side: velg Tillatelser → Posisjon → «Tillat alltid».</string>
+    <string name="background_disclosure_continue">Fortsett</string>
+    <string name="background_disclosure_cancel">Ikke nå</string>
     <!-- Oppdateringskanal for bøtesatsene. Uten Play må satsene kunne hentes uavhengig av
          APK-versjonen, ellers kjører gamle installasjoner utdaterte tall i stillhet. -->
     <string name="satser_url" translatable="false">https://raw.githubusercontent.com/henrik242/botometer/main/satser/botesatser.json</string>
