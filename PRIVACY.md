@@ -8,13 +8,16 @@ krasjrapportering, og utvikleren har ingen server som mottar data fra appen.
 
 ## Hva appen bruker
 
-**Posisjon.** Appen leser GPS-posisjon, fart og kurs mens den kjører, via Google Play-tjenestenes
-posisjonstjeneste. Posisjonen brukes bare på telefonen, til å finne fartsgrensen for vegen du
-kjører på. Den lagres ikke og sendes ikke videre som punkt. Et vedvarende varsel vises så lenge
-posisjon leses.
+**Posisjon.** Appen leser GPS-posisjon, fart og kurs via Google Play-tjenestenes
+posisjonstjeneste, til å vise fart, fartsgrense og bøtenivå og til å varsle når farten krysser
+inn i et nytt bøtenivå. Posisjonen brukes bare på telefonen, lagres ikke og sendes ikke videre som
+punkt.
 
-**Bilens fart.** Hvis bilen tillater det, leses bilens rapporterte fart for å vise avviket mot
-GPS-farten. Den forlater ikke telefonen.
+Posisjon leses mens Botometer vises på bilskjermen eller telefonen, og mens telefonen er koblet
+til bilen med Android Auto. Det skjer også når appen er lukket eller ikke i bruk på telefonen,
+fordi telefon-appen ligger i bakgrunnen mens bilskjermen vises. Et vedvarende varsel vises så
+lenge posisjon leses. Hovedbryteren «Botometer er på» stopper all posisjonslesing, og «Avslutt»
+i bilen eller to trykk på tilbake på telefonen stopper den for turen.
 
 ## Hva som sendes over nett
 
@@ -35,17 +38,28 @@ reguleres av Googles egne vilkår, ikke av denne erklæringen.
 
 ## Hva som lagres på telefonen
 
-Bare den sist nedlastede bøtesatstabellen, i appens private lagringsområde. Fartsgrensedata og
-diagnostikk holdes i minnet og forsvinner når appen avsluttes. Avinstallering sletter alt.
+I appens private lagringsområde ligger:
+
+- den sist nedlastede bøtesatstabellen
+- innstillingene (fire av/på-verdier)
+- siste krasj, hvis appen har krasjet: tidspunkt, appversjon og teknisk feilmelding, uten posisjon.
+  Den kan slettes fra telefon-appen.
+
+Fartsgrensedata, manuell fartsgrense og diagnostikk holdes i minnet og forsvinner når appen
+avsluttes. Diagnostikken kan inneholde vegnummer og omtrentlig område for siste treff, og forlater
+bare telefonen hvis du selv trykker «Kopier diagnostikk» og limer den inn et sted. Avinstallering
+sletter alt.
 
 ## Tillatelser
 
 - Posisjon (`ACCESS_FINE_LOCATION`, `ACCESS_COARSE_LOCATION`): fart og fartsgrense.
-- Forgrunnstjeneste for posisjon: for å fortsette å lese posisjon når telefonskjermen er av.
-  Appen ber ikke om posisjon i bakgrunnen.
-- Varsler: for å vise at posisjon leses.
+- Posisjon i bakgrunnen (`ACCESS_BACKGROUND_LOCATION`, «Tillat alltid»): for at bilskjermen og
+  fartsvarslene skal virke mens telefon-appen ikke er åpen. Appen forklarer dette før du sendes
+  til innstillingen, og virker på telefonen uten den.
+- Forgrunnstjeneste for posisjon: for å fortsette å lese posisjon når telefonskjermen er av, med
+  et synlig varsel.
+- Varsler: for varselet om at posisjon leses, og for fartsvarsler på telefonen og bilskjermen.
 - Internett: NVDB og bøtesatser, som beskrevet over.
-- Bilens fart (`CAR_SPEED`): valgfritt, se over.
 
 ## Barn
 
