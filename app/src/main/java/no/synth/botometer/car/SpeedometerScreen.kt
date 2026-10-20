@@ -209,7 +209,7 @@ class SpeedometerScreen(carContext: CarContext) : Screen(carContext), DefaultLif
                                     buildString {
                                         append("Satser pr. ${app.speedWatch.calculator.version}")
                                         if (app.speedWatch.ratesStale) append(" (UTDATERT - oppdater i telefon-appen)")
-                                        append(". Anslag - ikke juridisk bindende. Fartsgrenser: Statens vegvesen (NLOD 2.0).")
+                                        append(". Uoffisiell app. Anslag - ikke juridisk bindende. Fartsgrenser: Statens vegvesen (NLOD 2.0).")
                                     },
                                     CarToast.LENGTH_LONG,
                                 ).show()

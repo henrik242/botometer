@@ -11,6 +11,8 @@ import android.os.Build
 import android.os.Bundle
 import android.graphics.Typeface
 import android.os.SystemClock
+import android.text.Html
+import android.text.method.LinkMovementMethod
 import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
@@ -232,6 +234,7 @@ class MainActivity : ComponentActivity() {
             addView(headline)
             addView(subline)
             addView(speedCard)
+            addView(note(getString(R.string.unofficial)))
 
             addView(problems)
             addView(fixPermissions)
@@ -277,6 +280,13 @@ class MainActivity : ComponentActivity() {
                     R.string.setting_car_alerts_help,
                     settings.carAlerts,
                 ) { settings.carAlerts = it }
+            )
+
+            addView(heading(getString(R.string.sources_heading)))
+            addView(
+                note(Html.fromHtml(getString(R.string.sources_html), Html.FROM_HTML_MODE_COMPACT)).apply {
+                    movementMethod = LinkMovementMethod.getInstance()
+                }
             )
 
             addView(gap())
@@ -562,6 +572,12 @@ class MainActivity : ComponentActivity() {
 
     private fun gap() = TextView(this).apply { textSize = 6f; text = "" }
 
+    private fun note(value: CharSequence) = TextView(this).apply {
+        textSize = 12f
+        setTextColor(secondary)
+        text = value
+    }
+
     /**
      * `setPadding` tar PIKSLER. Alle avstandene var hardkodede pikselverdier, så sidemargen var
      * 16dp på en 3x-telefon og 12dp på en 4x - teksten krøp mot kanten nettopp på skjermene med
@@ -739,7 +755,7 @@ class MainActivity : ComponentActivity() {
         append(Diagnostics.summary())
         appendLine()
 
-        appendLine("Fartsgrenser: Statens vegvesen, NVDB (NLOD 2.0).")
+        appendLine("Fartsgrenser: Statens vegvesen, NVDB (NLOD 2.0). Uoffisiell app, uten tilknytning til Statens vegvesen eller politiet.")
         appendLine("Beløpene er anslag. Politiet legger målt fart minus sikkerhetsfradrag til grunn, og appen kjenner ikke variable eller midlertidig skiltede fartsgrenser.")
     }
 

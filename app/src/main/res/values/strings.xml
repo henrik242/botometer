@@ -55,6 +55,11 @@
     <string name="background_disclosure_text">Botometer samler inn posisjonsdata for å vise fart, fartsgrense og bøtenivå på bilskjermen i Android Auto, også når appen er lukket eller ikke i bruk på telefonen.\n\nPosisjonen brukes bare på telefonen og lagres ikke. For å hente fartsgrenser sendes et område på noen kilometer til Statens vegvesen, aldri det nøyaktige punktet.\n\nPå neste side: velg Tillatelser → Posisjon → «Tillat alltid».</string>
     <string name="background_disclosure_continue">Fortsett</string>
     <string name="background_disclosure_cancel">Ikke nå</string>
+    <!-- Play krever at en app med offentlig informasjon sier tydelig at den ikke er fra det
+         offentlige, og lenker til kildene. -->
+    <string name="unofficial">Uoffisiell app. Botometer har ingen tilknytning til Statens vegvesen, politiet eller andre offentlige etater. Beløpene er anslag, ikke juridisk rådgivning.</string>
+    <string name="sources_heading">KILDER</string>
+    <string name="sources_html" translatable="false"><![CDATA[Fartsgrenser: <a href="https://www.vegvesen.no/fag/teknologi/nasjonal-vegdatabank/">Statens vegvesen, Nasjonal vegdatabank (NVDB)</a>, NLOD 2.0<br>Bøtesatser: <a href="https://lovdata.no/dokument/SF/forskrift/1990-06-29-492">Forskrift om forenklet forelegg i vegtrafikksaker</a><br>Prikker: <a href="https://lovdata.no/dokument/SF/forskrift/2003-09-19-1164">Forskrift om prikkbelastning</a><br>Tap av førerrett: <a href="https://lovdata.no/dokument/SF/forskrift/2003-12-19-1660">Forskrift om tap av retten til å føre motorvogn</a>]]></string>
     <!-- Oppdateringskanal for bøtesatsene. Uten Play må satsene kunne hentes uavhengig av
          APK-versjonen, ellers kjører gamle installasjoner utdaterte tall i stillhet. -->
     <string name="satser_url" translatable="false">https://raw.githubusercontent.com/henrik242/botometer/main/satser/botesatser.json</string>
